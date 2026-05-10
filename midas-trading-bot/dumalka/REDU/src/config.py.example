@@ -1,0 +1,73 @@
+import os
+
+class Config:
+    WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "CHANGE_ME_IN_PRODUCTION")
+    DB_PATH = os.getenv("DB_PATH", "data/signals.db")
+    DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/riskengine_db")
+
+    # Defaults for Risk Engine if not specified
+    DEFAULT_EQUITY = float(os.getenv("DEFAULT_EQUITY", "10000.0"))
+    SCENARIOS = int(os.getenv("N_SCENARIOS", "100000"))
+
+    # Bybit parameters (via VPS proxy)
+    BYBIT_PROXY_URL = os.getenv("BYBIT_PROXY_URL", "http://YOUR_BOT_HOST:8002")
+    BYBIT_API_URL = os.getenv("BYBIT_API_URL", "https://api.bybit.com")
+    VOL_FALLBACK = float(os.getenv("VOL_FALLBACK", "0.8"))
+    VOL_LOOKBACK_HOURS = int(os.getenv("VOL_LOOKBACK_HOURS", "168"))
+
+    # Advanced Risk Limits
+    MAX_EXPOSURE_PER_SYMBOL = float(os.getenv("MAX_EXPOSURE_PER_SYMBOL", "0.20"))
+    KELLY_FRACTION = float(os.getenv("KELLY_FRACTION", "0.5"))
+
+    # Liquidity / Slippage (v0.6.0)
+    SLIPPAGE_REJECT_RATIO = float(os.getenv("SLIPPAGE_REJECT_RATIO", "0.5"))
+    SPREAD_PENALTY_THRESHOLD = float(os.getenv("SPREAD_PENALTY_THRESHOLD", "0.0015"))
+
+    # Portfolio Allocator (v0.6.0)
+    MAX_SECTOR_EXPOSURE = float(os.getenv("MAX_SECTOR_EXPOSURE", "0.50"))
+
+    # Telegram Notifications
+    TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
+    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "YOUR_CHAT_ID")
+
+    # Trading Bot Callback (approval flow)
+    BOT_CALLBACK_URL = os.getenv("BOT_CALLBACK_URL", "https://your-bot-host/api/re/callback")
+    CALLBACK_SECRET = os.getenv("CALLBACK_SECRET", "CHANGE_ME_IN_PRODUCTION")
+
+    # Position Tracker (Думалка v0.14+)
+    PORTFOLIO_VAR_LIMIT = float(os.getenv("PORTFOLIO_VAR_LIMIT", "0.10"))
+
+    # Думалка → Trading Bot command channel
+    DUMALKA_BOT_URL = os.getenv("DUMALKA_BOT_URL", "http://YOUR_BOT_HOST:8001")
+    DUMALKA_BOT_URL_FALLBACK = os.getenv("DUMALKA_BOT_URL_FALLBACK", "http://YOUR_BOT_HOST_FALLBACK:8001")
+    DUMALKA_BOT_TOKEN = os.getenv("DUMALKA_BOT_TOKEN", "YOUR_DUMALKA_TOKEN")
+    DUMALKA_ACTIVE_MODE = os.getenv("DUMALKA_ACTIVE_MODE", "true").lower() == "true"
+
+    # Phase 1 — Rule-Based Filters
+    SYMBOL_BLACKLIST = set(os.getenv("SYMBOL_BLACKLIST",
+        "GRASSUSDT,PIPPINUSDT,BTCUSDT,HIPPOUSDT").split(","))
+    UNPROFITABLE_HOURS_UTC = set(int(h) for h in os.getenv("UNPROFITABLE_HOURS_UTC",
+        "3,6,7,19").split(","))
+    MAX_LOSS_PCT = float(os.getenv("MAX_LOSS_PCT", "5.0"))
+    PHASE1_SHADOW_MODE = os.getenv("PHASE1_SHADOW_MODE", "true").lower() == "true"
+    PHASE1_ACTIVE_MODE = os.getenv("PHASE1_ACTIVE_MODE", "false").lower() == "true"
+
+    # Regime Detector (v0.7.0)
+    REGIME_DETECTOR_ENABLED = os.getenv("REGIME_DETECTOR_ENABLED", "true").lower() == "true"
+    REGIME_CACHE_SECONDS = int(os.getenv("REGIME_CACHE_SECONDS", "900"))
+
+    # Watchlist Scanner — Dump/Pump Detector (v0.8.2)
+    WATCHLIST_SCANNER_ENABLED = os.getenv("WATCHLIST_SCANNER_ENABLED", "true").lower() == "true"
+    WATCHLIST_SYMBOLS = [s.strip() for s in os.getenv("WATCHLIST_SYMBOLS",
+        "WIFUSDT,PEPEUSDT,FARTCOINUSDT,RENDERUSDT"
+    ).split(",") if s.strip()]
+    DUMP_THRESHOLD_PCT = float(os.getenv("DUMP_THRESHOLD_PCT", "2.5"))
+    PUMP_THRESHOLD_PCT = float(os.getenv("PUMP_THRESHOLD_PCT", "2.5"))
+    SCAN_INTERVAL_SEC = int(os.getenv("SCAN_INTERVAL_SEC", "300"))
+
+    # v0.18.3: Ghost OPEN cleanup — symbol absent from bot /dumalka/positions (30s cycle)
+    BOT_ABSENT_CLOSE_CYCLES = int(os.getenv("BOT_ABSENT_CLOSE_CYCLES", "20"))
+    # Optional: POST /api/admin/force-close-position (header X-Force-Close-Secret)
+    FORCE_CLOSE_SECRET = os.getenv("FORCE_CLOSE_SECRET", "").strip()
+
+config = Config()

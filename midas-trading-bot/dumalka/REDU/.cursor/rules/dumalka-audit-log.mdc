@@ -1,0 +1,69 @@
+---
+description: Dumalka audit log query guide — use dumalka_audit_log as primary source for position investigations
+globs: src/position_tracker.py
+alwaysApply: true
+---
+
+# Dumalka Audit Log (v0.19.9+)
+
+When asked "what did Dumalka do?", "why was position X closed?", "what happened with trade #N?", or any position investigation — **always query `dumalka_audit_log` first**, before falling back to `journalctl` text logs.
+
+## Primary Query Pattern
+
+```sql
+SELECT timestamp, action, pos_id, details, mc_diagnostics, market_state
+FROM dumalka_audit_log
+WHERE pos_id = <POSITION_ID>
+ORDER BY timestamp;
+```
+
+## Key Action Types (v0.19.9)
+
+| action | When written | details contains |
+|--------|-------------|-----------------|
+| `position_closed` | Every position close (100% coverage since v0.19.9) | close_reason, **source**, pnl_pct, price, max_pnl_pct, drawdown_pct, tp_progress_pct |
+| `phantom_transition` | DESYNC SHIELD triggers | cmd_fail_count, last_action, last_bot_response, threshold |
+| `observe_only` | Position enters observe-only mode (once) | age_sec |
+| `phantom_retry_ok` | Bot reappeared after phantom retry | old_phantom_count |
+| `grace_proven` | Young position marked proven | max_pnl, tp_progress, hours_open |
+| `apollo_shadow` | Apollo bail disabled (Patience Protocol) | hours_open, pnl, full_e_pnl, p_tp, p_sl |
+| `time_decay_exempt` | Momentum override skips decay exit | hours_open, tp_progress, pnl, p_tp, p_sl |
+| `move_sl` / `full_close` | Successful bot command | mc_diagnostics: trigger, zone, dd_pct, threshold |
+| `*_failed` | Bot rejected command | mc_diagnostics: diagnostics + bot_response |
+| `*_breaker` | Circuit breaker activated | mc_diagnostics: diagnostics |
+
+### `position_closed` — Three Sources (v0.19.9)
+
+The `details->>'source'` field identifies which code path closed the position:
+
+| source | Trigger | Extra fields |
+|--------|---------|--------------|
+| `position_tracker` | Dumalka logic: zone_full_exit, hard_sl_cap, sl_hit, timeout, etc. | — |
+| `bot_api` | Bot sent close event via `POST /trade-outcome` | — |
+| `webhook_reversal` | New signal triggered reversal or re-entry via `POST /tv-webhook` | `detail`, `new_signal_score` |
+
+```sql
+-- Filter by close source
+SELECT pos_id, symbol, details->>'close_reason', details->>'pnl_pct'
+FROM dumalka_audit_log
+WHERE action = 'position_closed'
+  AND details->>'source' = 'bot_api'   -- or 'position_tracker' / 'webhook_reversal'
+ORDER BY timestamp DESC;
+```
+
+## Columns
+
+- `pos_id` (INTEGER, indexed): Direct FK to `open_positions.id`
+- `details` (JSONB): Structured decision context — query with `details->>'key'` or `details->'key'`
+- `market_state` (TEXT/JSON): `{"regime": "normal", "btc_1h": -0.3}` at time of event
+- `mc_diagnostics` (TEXT/JSON): MC probabilities + bot response for command events
+
+## Investigation Workflow
+
+1. Find position: `SELECT * FROM open_positions WHERE id = N` or `WHERE symbol = 'X' AND ...`
+2. Get full audit trail: `SELECT * FROM dumalka_audit_log WHERE pos_id = N ORDER BY timestamp`
+3. Cross-reference with snapshots: `SELECT * FROM position_snapshots WHERE pos_id = N ORDER BY snapshot_at`
+4. Check post-close analysis: `SELECT pos_id, exit_pnl, what_if, max_pnl_24h, max_pnl_24h_hour, pnl_1h_after, pnl_24h_after FROM what_if_outcomes WHERE pos_id = N`
+5. Kline context (v0.19.0): `SELECT * FROM klines_history WHERE symbol = 'X' AND timeframe = '1h' AND open_time BETWEEN <entry_ms> AND <close_ms> ORDER BY open_time`
+6. Scout parallel signals (v0.19.1): `SELECT * FROM scout_signals WHERE symbol = 'X' AND created_at BETWEEN <entry_time> AND <close_time>`
+7. Derivatives curve (v0.19.1): `SELECT * FROM derivatives_snapshots WHERE symbol = 'X' AND ts BETWEEN <entry_time> AND <close_time> ORDER BY ts`

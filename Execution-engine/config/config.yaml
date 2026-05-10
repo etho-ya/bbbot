@@ -1,0 +1,62 @@
+nats:
+  url: "nats://127.0.0.1:4222" # Overridden on VPS to point at data-layer over Hysteria2 tunnel
+  max_reconnects: -1 # keep trying forever
+  reconnect_wait: 2s
+  ack_wait: 30s # JetStream redelivery window for commands.* (see concepts/state-management.md)
+  # mTLS (prod only — per concepts/security-model.md, mTLS is mandatory even
+  # inside the Hysteria2 tunnel). Paths are provisioned by Ansible.
+  # tls_cert: "/etc/execution-engine/certs/client.crt"
+  # tls_key:  "/etc/execution-engine/certs/client.key"
+  # tls_ca:   "/etc/execution-engine/certs/ca.crt"
+  # creds_file: "/etc/execution-engine/nats.creds"
+
+badger:
+  data_dir: "data/badger"
+  idempotency_key_ttl: 168h # 7 days — exceeds MaxDeliver*AckWait by many orders of magnitude
+  gc_interval_seconds: 3600
+
+proxy:
+  base_url: "http://127.0.0.1:8080" # bybit-proxy on the same VPS
+  timeout: 5s
+  max_retries: 3
+  retry_backoff_ms: 200
+
+# Gate #2 rules — matches Phase 5 conservative baseline in concepts/risk-gates.md.
+# Must stay in sync with the orchestrator's Gate #1 (risk_gate_1.yaml).
+# Disagreement between gates is a critical incident, not normal operation.
+risk_gate:
+  max_position_size_pct: 0.25
+  max_open_positions: 3
+  daily_drawdown_stop_pct: 2.0
+  llm_confidence_min: 0.5
+  max_leverage: 3.0
+  instrument_whitelist:
+    - "BTCUSDT"
+    - "ETHUSDT"
+  max_slippage_bps: 30
+  ticker_cooldown_minutes: 15
+  # Correlated-positions guard: reject a new position if any open position on a
+  # symbol with |correlation| > max_correlation. Leave matrix empty to disable.
+  max_correlation: 0.8
+  correlation_matrix: {}
+  # Example (uncomment to enable):
+  # correlation_matrix:
+  #   BTCUSDT:
+  #     ETHUSDT: 0.85
+  #   ETHUSDT:
+  #     BTCUSDT: 0.85
+
+dead_man:
+  heartbeat_timeout_minutes: 3
+  check_interval_seconds: 10
+
+metrics:
+  addr: ":9090"
+
+# HMAC shared secret (concepts/command-contract.md, concepts/security-model.md).
+# In production this file is written by Vault/SOPS-age via Ansible at provision
+# time. NEVER commit the actual secret to git; the .hmac-secret committed here
+# is a dev-only fixture. Real deployments mount the secret read-only from
+# /etc/execution-engine/ with mode 0400 owned by the service user.
+hmac:
+  secret_file: "config/.hmac-secret"

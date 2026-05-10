@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Risk Engine — О проекте</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #060a13;
+            --bg-card: rgba(15, 23, 42, 0.6);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-cyan: #06b6d4;
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+            --border: rgba(148, 163, 184, 0.08);
+            --glow-purple: rgba(139, 92, 246, 0.15);
+            --glow-blue: rgba(59, 130, 246, 0.12);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            line-height: 1.7;
+            overflow-x: hidden;
+        }
+
+        /* Ambient background glow — on top of stars */
+        body::before {
+            content: '';
+            position: fixed; top: -200px; left: 50%; transform: translateX(-50%);
+            width: 800px; height: 600px;
+            background: radial-gradient(ellipse, rgba(139,92,246,0.08) 0%, rgba(59,130,246,0.04) 40%, transparent 70%);
+            pointer-events: none; z-index: 1;
+        }
+
+        /* ── Starfield Background ─────────── */
+        #stars-container {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            overflow: hidden;
+            z-index: 0;
+            background: radial-gradient(ellipse at bottom, #0c1222 0%, var(--bg-dark) 70%);
+        }
+
+        #stars-parallax {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            will-change: transform;
+        }
+
+        .star-layer {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: 2000px;
+            will-change: transform;
+        }
+
+        .star-layer-1 { animation: starScroll1 120s linear infinite; }
+        .star-layer-2 { animation: starScroll2 200s linear infinite; }
+        .star-layer-3 { animation: starScroll3 300s linear infinite; }
+
+        @keyframes starScroll1 {
+            from { transform: translateY(0); }
+            to   { transform: translateY(-2000px); }
+        }
+        @keyframes starScroll2 {
+            from { transform: translateY(0); }
+            to   { transform: translateY(-2000px); }
+        }
+        @keyframes starScroll3 {
+            from { transform: translateY(0); }
+            to   { transform: translateY(-2000px); }
+        }
+
+        .star-dot, .star-dot-clone {
+            position: absolute;
+            left: 0;
+            background: transparent;
+            border-radius: 50%;
+        }
+        .star-dot       { top: 0; }
+        .star-dot-clone  { top: 2000px; }
+
+        /* Twinkle canvas sits on top of scrolling stars */
+        #twinkle-canvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .container {
+            max-width: 860px; margin: 0 auto; padding: 48px 24px 64px;
+            position: relative; z-index: 1;
+        }
+
+        /* ── Header ──────────────────────── */
+        header {
+            text-align: center; margin-bottom: 64px;
+            animation: fadeInUp 0.8s ease;
+        }
+
+        .version-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 5px 14px;
+            background: linear-gradient(135deg, rgba(139,92,246,0.12), rgba(59,130,246,0.08));
+            border: 1px solid rgba(139,92,246,0.25);
+            border-radius: 100px; color: var(--accent-purple);
+            font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px;
+            margin-bottom: 20px;
+        }
+        .version-badge .dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+            animation: pulse-dot 2s infinite;
+        }
+
+        h1 {
+            font-size: 52px; font-weight: 800; letter-spacing: -2px; margin-bottom: 20px;
+            background: linear-gradient(135deg, #ffffff 0%, #c4b5fd 50%, #818cf8 100%);
+            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+            animation: shimmer 8s ease-in-out infinite;
+            background-size: 200% 200%;
+        }
+
+        p.lead {
+            font-size: 17px; color: var(--text-muted); max-width: 640px; margin: 0 auto;
+            line-height: 1.8;
+        }
+
+        /* ── Sections ────────────────────── */
+        .section {
+            margin-bottom: 40px; padding: 32px 36px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            backdrop-filter: blur(12px);
+            position: relative; overflow: hidden;
+            transition: border-color 0.3s ease, transform 0.2s ease;
+            animation: fadeInUp 0.6s ease backwards;
+        }
+        .section:nth-child(2) { animation-delay: 0.1s; }
+        .section:nth-child(3) { animation-delay: 0.15s; }
+        .section:nth-child(4) { animation-delay: 0.2s; }
+        .section:nth-child(5) { animation-delay: 0.25s; }
+
+        .section:hover { border-color: rgba(139,92,246,0.15); transform: translateY(-1px); }
+
+        .section::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(139,92,246,0.3), transparent);
+            opacity: 0; transition: opacity 0.3s;
+        }
+        .section:hover::before { opacity: 1; }
+
+        .section.highlight {
+            border-color: rgba(139,92,246,0.2);
+            background: linear-gradient(135deg, rgba(139,92,246,0.06), var(--bg-card));
+        }
+        .section.active-phase {
+            border-color: rgba(245,158,11,0.25);
+            background: linear-gradient(135deg, rgba(245,158,11,0.04), var(--bg-card));
+        }
+
+        h2 {
+            font-size: 18px; font-weight: 700; margin-bottom: 14px;
+            display: flex; align-items: center; gap: 10px;
+        }
+        h2 svg { width: 20px; height: 20px; flex-shrink: 0; opacity: 0.8; }
+
+        .section p { font-size: 14px; color: var(--text-muted); margin-bottom: 16px; }
+
+        ul { list-style: none; }
+        li {
+            margin-bottom: 10px; padding-left: 20px; position: relative;
+            font-size: 14px; line-height: 1.7;
+        }
+        li::before {
+            content: ""; position: absolute; left: 0; top: 10px;
+            width: 5px; height: 5px; border-radius: 50%;
+            background: var(--accent-purple); opacity: 0.7;
+        }
+        li b { color: var(--text-main); }
+
+        /* ── Metrics ─────────────────────── */
+        .metric-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 16px; }
+        .metric-grid-3 { grid-template-columns: repeat(3, 1fr); }
+
+        .metric-item {
+            padding: 16px 18px;
+            background: rgba(6, 10, 19, 0.6);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            transition: border-color 0.2s;
+        }
+        .metric-item:hover { border-color: rgba(139,92,246,0.2); }
+        .metric-item h3 {
+            font-size: 10px; color: var(--text-muted); margin-bottom: 4px;
+            text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600;
+        }
+        .metric-item div { font-size: 15px; font-weight: 700; }
+
+        /* ── Architecture Flow ────────────── */
+        .arch-flow {
+            display: flex; align-items: center; justify-content: center;
+            gap: 0; margin: 20px 0; flex-wrap: wrap;
+        }
+        .arch-box {
+            padding: 10px 18px; border-radius: 10px; font-size: 12px; font-weight: 600;
+            background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.15);
+            white-space: nowrap;
+        }
+        .arch-box.core {
+            background: linear-gradient(135deg, rgba(139,92,246,0.12), rgba(59,130,246,0.08));
+            border-color: rgba(139,92,246,0.3);
+            box-shadow: 0 0 20px rgba(139,92,246,0.1);
+        }
+        .arch-arrow {
+            color: rgba(139,92,246,0.4); font-size: 14px; padding: 0 6px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* ── Phase Tags ──────────────────── */
+        .tag {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 8px; border-radius: 5px;
+            font-size: 10px; font-weight: 700; letter-spacing: 0.3px;
+            vertical-align: middle; margin-left: 6px;
+        }
+        .tag-done { background: rgba(16,185,129,0.1); color: var(--accent-green); }
+        .tag-active { background: rgba(245,158,11,0.1); color: var(--accent-yellow); }
+        .tag-pending { background: rgba(148,163,184,0.06); color: rgba(148,163,184,0.5); }
+
+        /* ── Roadmap ─────────────────────── */
+        .roadmap li { padding-left: 0; display: flex; align-items: center; gap: 8px; }
+        .roadmap li::before { display: none; }
+        .roadmap li b { min-width: 80px; }
+
+        /* ── Footer Nav ──────────────────── */
+        .footer-nav {
+            display: flex; justify-content: center; gap: 12px; margin-top: 40px;
+            animation: fadeInUp 0.8s ease 0.3s backwards;
+        }
+        .nav-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 11px 22px; color: white; text-decoration: none;
+            font-size: 13px; font-weight: 600; border-radius: 10px;
+            transition: all 0.2s;
+        }
+        .nav-btn:hover { transform: translateY(-2px); }
+        .nav-btn.primary {
+            background: linear-gradient(135deg, var(--accent-blue), #2563eb);
+            box-shadow: 0 4px 16px rgba(59,130,246,0.25);
+        }
+        .nav-btn.primary:hover { box-shadow: 0 6px 24px rgba(59,130,246,0.35); }
+        .nav-btn.secondary {
+            background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2);
+        }
+        .nav-btn.secondary:hover { background: rgba(139,92,246,0.18); }
+
+        /* ── Animations ──────────────────── */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes shimmer {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        @media (max-width: 600px) {
+            h1 { font-size: 32px; }
+            .metric-grid, .metric-grid-3 { grid-template-columns: 1fr; }
+            .section { padding: 24px 20px; }
+            .arch-flow { flex-direction: column; gap: 6px; }
+            .arch-arrow { transform: rotate(90deg); }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- ── Starfield ──────────────────────── -->
+    <div id="stars-container">
+        <div id="stars-parallax">
+            <div class="star-layer star-layer-1" id="sl1">
+                <div class="star-dot" id="sd1"></div>
+                <div class="star-dot-clone" id="sc1"></div>
+            </div>
+            <div class="star-layer star-layer-2" id="sl2">
+                <div class="star-dot" id="sd2"></div>
+                <div class="star-dot-clone" id="sc2"></div>
+            </div>
+            <div class="star-layer star-layer-3" id="sl3">
+                <div class="star-dot" id="sd3"></div>
+                <div class="star-dot-clone" id="sc3"></div>
+            </div>
+        </div>
+    </div>
+    <canvas id="twinkle-canvas"></canvas>
+
+    <div class="container">
+        <header>
+            <div class="version-badge"><span class="dot"></span> v0.19.8 — API-first Bot Integration</div>
+            <h1>REDU</h1>
+            <p class="lead">Risk Engine + Думалка. Автономное управление позициями для криптотрейдинга.
+                GPU Monte Carlo (Titan V), 13 таблиц PostgreSQL, 103K+ ML-снимков, 34 торговых символа, audit 95% решений. Bot↔RE через чистый HTTP API.</p>
+        </header>
+
+        <!-- Architecture -->
+        <div class="section highlight">
+            <h2 style="color:var(--accent-blue);">
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6.429 9.75L2.25 12l4.179 2.25m0-4.5l5.571 3 5.571-3m-11.142 0L2.25 7.5 12 2.25l9.75 5.25-4.179 2.25m0 0L12 12.75 6.429 9.75m11.142 0l4.179 2.25L12 17.25 2.25 12l4.179-2.25m11.142 0l4.179 2.25L12 21.75l-9.75-5.25 4.179-2.25" />
+                </svg>
+                Архитектура
+            </h2>
+            <div class="arch-flow">
+                <div class="arch-box">Midas Signal</div>
+                <span class="arch-arrow">→</span>
+                <div class="arch-box">Trading Bot</div>
+                <span class="arch-arrow" style="color:var(--accent-green);" title="HTTP POST /tv-webhook (v0.19.8)">→ API</span>
+                <div class="arch-box core">⚡ Risk Engine + Titan V</div>
+                <span class="arch-arrow">→</span>
+                <div class="arch-box">Думалка (30s)</div>
+                <span class="arch-arrow">→</span>
+                <div class="arch-box">Exit Quality</div>
+            </div>
+            <p style="text-align:center;margin-bottom:0;">Полный цикл: сигнал → Bot→RE HTTP API (v0.19.8) → GPU-скоринг → открытие → мониторинг 30с → закрытие → пост-анализ (1-24ч). Telegram — только для людей.</p>
+        </div>
+
+        <!-- GPU -->
+        <div class="section">
+            <h2 style="color:var(--accent-purple);">
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+                </svg>
+                GPU: NVIDIA Titan V
+            </h2>
+            <p>Локальные вычисления на архитектуре Volta. FP64 точность для финансовых расчётов. Без облака — полный контроль и минимальная латентность.</p>
+            <div class="metric-grid">
+                <div class="metric-item">
+                    <h3>Производительность</h3>
+                    <div>6.3 TFLOPS <span style="color:var(--text-muted);font-weight:400;font-size:12px;">(FP64)</span></div>
+                </div>
+                <div class="metric-item">
+                    <h3>Латентность</h3>
+                    <div>~300ms <span style="color:var(--text-muted);font-weight:400;font-size:12px;">на запрос</span></div>
+                </div>
+                <div class="metric-item">
+                    <h3>Симуляции</h3>
+                    <div>100K+ <span style="color:var(--text-muted);font-weight:400;font-size:12px;">сценариев</span></div>
+                </div>
+                <div class="metric-item">
+                    <h3>GPU Load</h3>
+                    <div>&lt;1% <span style="color:var(--text-muted);font-weight:400;font-size:12px;">в покое</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Signal Scoring -->
+        <div class="section">
+            <h2 style="color:var(--accent-green);">
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Scoring v2 — Оценка сигналов
+                <span class="tag tag-done">577 scored</span>
+            </h2>
+            <ul>
+                <li><b>Monte Carlo VaR/CVaR</b> — Jump-Diffusion 100K GPU сценариев, flash-crash моделирование</li>
+                <li><b>7 компонентов</b> — win_rate (25%), probability (22%), R:R (17%), trend (14%), liquidity (8%), vol (7%), funding+OI (7%)</li>
+                <li><b>Data Quality Penalty</b> — штраф -15% за каждый отсутствующий Midas компонент</li>
+                <li><b>Kelly Criterion</b> — оптимальный размер позиции для compound growth</li>
+                <li><b>Countertrend Detection</b> — multi-TF (15m/1h/4h) trend alignment, авто-снижение при торговле против тренда</li>
+                <li><b>Regime Detector</b> — trending / ranging / volatile / low_liquidity → динамическая корректировка весов</li>
+                <li><b>Re-entry Protocol</b> — auto-close + re-open при same-side повторном сигнале (v0.16)</li>
+                <li><b>Рекомендация</b> — Approve (≥0.60) / Reduce (0.45–0.60) / Reject (&lt;0.45)</li>
+            </ul>
+        </div>
+
+        <!-- Думалка -->
+        <div class="section highlight">
+            <h2 style="color:var(--accent-purple);">
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Думалка — AI Position Manager
+                <span class="tag tag-done">v0.19.8 LIVE</span>
+            </h2>
+            <p>~2,300 LOC. Мониторинг каждые 30 сек. 7-ступенчатый pipeline решений. 575 закрытых позиций, 13 типов закрытия.</p>
+            <ul>
+                <li><b>Zone Policy (5 зон)</b> — адаптивные пороги DD/TP с MC zone floor и grid-search калибровкой</li>
+                <li><b>MC Forward Projection</b> — GPU 100K сценариев: P(TP), P(SL), E[PnL], skewness на горизонте 4ч</li>
+                <li><b>E[PnL] Reform</b> — full E[PnL] across all MC paths + momentum coordination + skewness override (v0.18.1)</li>
+                <li><b>Apollo Protocol</b> — time-decay 1-4h danger zone: orderbook shielding, ATR-adaptive soft BE, funding-aware</li>
+                <li><b>ATR Trailing + R-Multiple</b> — vol-adaptive trailing SL + profit locks at 2R/3R</li>
+                <li><b>Proven Position</b> — sticky grace bypass при max_pnl ≥ 3% и tp ≥ 50% (v0.18.4)</li>
+                <li><b>DESYNC Shield</b> — phantom mode при 5+ отказах бота, auto-close при рассинхроне</li>
+                <li><b>102K+ ML-снимков</b> — 35 features / tick, 27 символов, training-ready dataset</li>
+            </ul>
+            <div class="metric-grid metric-grid-3">
+                <div class="metric-item">
+                    <h3>Zone 1 (TP 5-20%)</h3>
+                    <div style="color:var(--accent-yellow);">DD ≤ 30% → SL BE</div>
+                </div>
+                <div class="metric-item">
+                    <h3>Zone 2 (TP 20-40%)</h3>
+                    <div style="color:var(--accent-blue);">DD ≤ 25% → full_close</div>
+                </div>
+                <div class="metric-item">
+                    <h3>Zone 3-4 (TP 40%+)</h3>
+                    <div style="color:var(--accent-green);">DD ≤ 15-10% → full_close</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Audit & Observability -->
+        <div class="section">
+            <h2 style="color:var(--accent-yellow);">
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Structured Audit Log
+                <span class="tag tag-done">v0.19.8 LIVE</span>
+            </h2>
+            <p>Каждое решение Думалки сохраняется в <code>dumalka_audit_log</code> с полным контекстом для post-mortem анализа.</p>
+            <ul>
+                <li><b>13K+ записей</b> — все команды боту, закрытия, phantom-переходы, state changes</li>
+                <li><b>pos_id (indexed)</b> — прямой FK к позиции без JOIN через trace_id</li>
+                <li><b>details JSONB</b> — close_reason, PnL, drawdown, zone, MC state</li>
+                <li><b>market_state</b> — regime + BTC 1h change на момент каждого решения</li>
+                <li><b>95% покрытие</b> — 11 типов audit events (было 30%, только команды)</li>
+                <li><b>Exit Quality Tracker</b> — пост-анализ 1h/4h/12h/24h + <b>peak tracking</b> (max_pnl_24h) после закрытия, what-if SL/TP симуляция (v0.18.0/v0.19.2)</li>
+                <li><b>Kline Storage</b> — 10,000+ свечей (34 символа, 15m/1h/4h, 48h post-close tracking)</li>
+                <li><b>Scout Signals</b> — 8 типов shadow-сигналов, derivatives time-series (funding/OI/LSR)</li>
+            </ul>
+            <div class="metric-grid metric-grid-3">
+                <div class="metric-item">
+                    <h3>Audit Events</h3>
+                    <div>15,000+</div>
+                </div>
+                <div class="metric-item">
+                    <h3>ML Snapshots</h3>
+                    <div>103,000+</div>
+                </div>
+                <div class="metric-item">
+                    <h3>Post-Close Analysis</h3>
+                    <div>580 / 580</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Decision Pipeline -->
+        <div class="section">
+            <h2 style="color:var(--accent-blue);">
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" />
+                </svg>
+                Decision Pipeline (per 30s cycle)
+            </h2>
+            <p>7 ступеней проверки на каждом цикле. Circuit Breaker защищает от каскадных сбоев.</p>
+            <ul>
+                <li><b>1. Hard SL Cap</b> — аварийное закрытие при PnL ≤ -3.5% (активно с v0.18.8)</li>
+                <li><b>2. SL / TP3 hit</b> — классические стоп-лосс и тейк-профит</li>
+                <li><b>3. Zone Policy</b> — адаптивные пороги DD/TP с vol_modifier и regime_dd_sensitivity</li>
+                <li><b>4. MC Forward</b> — GPU P(TP)/P(SL) корректирует решение при негативном сценарии</li>
+                <li><b>5. E[PnL] Reform</b> — full expected PnL + skewness + momentum coordination</li>
+                <li><b>6. Apollo Protocol</b> — time-decay для позиций 1-4ч, orderbook shielding</li>
+                <li><b>7. ATR Trail + R-mult</b> — vol-adaptive trailing SL, profit locks at 2R/3R</li>
+            </ul>
+        </div>
+
+        <!-- PostgreSQL -->
+        <div class="section active-phase" style="border-color:rgba(6,182,212,0.3);background:linear-gradient(135deg, rgba(6,182,212,0.04), var(--bg-card));">
+            <h2 style="color:var(--accent-cyan);">
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+                </svg>
+                PostgreSQL 18.3 + AIO
+            </h2>
+            <p>13 таблиц, 120K+ строк, io_uring AIO, Unix Socket, автоматические бэкапы каждые 3 дня.</p>
+            <div class="metric-grid" style="margin-top:16px;">
+                <div class="metric-item" style="border-left:3px solid var(--accent-cyan);">
+                    <h3>Signals</h3>
+                    <div>577</div>
+                </div>
+                <div class="metric-item" style="border-left:3px solid var(--accent-green);">
+                    <h3>Positions</h3>
+                    <div>575</div>
+                </div>
+                <div class="metric-item" style="border-left:3px solid var(--accent-purple);">
+                    <h3>ML Snapshots</h3>
+                    <div>102,184</div>
+                </div>
+                <div class="metric-item" style="border-left:3px solid var(--accent-yellow);">
+                    <h3>Audit Entries</h3>
+                    <div>13,028</div>
+                </div>
+            </div>
+            <div class="metric-grid" style="margin-top:8px;">
+                <div class="metric-item" style="border-left:3px solid var(--accent-green);">
+                    <h3>What-If Outcomes</h3>
+                    <div>575 / 575</div>
+                </div>
+                <div class="metric-item" style="border-left:3px solid var(--accent-blue);">
+                    <h3>Trade Events</h3>
+                    <div>7,677</div>
+                </div>
+                <div class="metric-item" style="border-left:3px solid var(--accent-cyan);">
+                    <h3>Symbols Tracked</h3>
+                    <div>27</div>
+                </div>
+                <div class="metric-item" style="border-left:3px solid var(--accent-purple);">
+                    <h3>Tables</h3>
+                    <div>13</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Analytics -->
+        <div class="section">
+            <h2 style="color:var(--accent-cyan);">
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+                </svg>
+                Аналитика
+                <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:auto;">21+ метрик · GPU-powered</span>
+            </h2>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <ul>
+                    <li><b>Capture Ratio</b> — реализованный vs пиковый PnL</li>
+                    <li><b>Score→PnL Scatter</b> — корреляция скоров с результатом</li>
+                    <li><b>Symbol Ranking</b> — PnL, win rate, best/worst по символу</li>
+                    <li><b>Daily PnL Timeline</b> — кумулятивная кривая прибыли</li>
+                    <li><b>Win Rate Trend</b> — скользящий 7-дневный win rate</li>
+                    <li><b>Close Reasons</b> — 13 типов (sl_hit, zone, apollo, e_pnl, phantom...)</li>
+                    <li><b>MC Accuracy</b> — P(TP) предсказания vs реальный исход</li>
+                    <li><b>R:R Analysis</b> — ожидаемый vs реализованный Risk/Reward</li>
+                    <li><b>Entry Slippage</b> — цена сигнала vs фактический вход</li>
+                    <li><b>Win/Loss Streaks</b> — текущая серия, max streak</li>
+                </ul>
+                <ul>
+                    <li><b>What-If Analysis</b> — пост-анализ: что было бы если держать</li>
+                    <li><b>Exit Quality</b> — PnL через 1h/4h/12h/24h после закрытия</li>
+                    <li><b>Scoring Quality</b> — Confusion Matrix, Calibration Curve</li>
+                    <li><b>Time-of-Day</b> — PnL по часам UTC</li>
+                    <li><b>Hold Time</b> — время удержания по типу закрытия</li>
+                    <li><b>Midas Signal Quality</b> — TP hit rates, reject outcomes</li>
+                    <li><b>SL Optimization</b> — симуляция 150 SL caps на GPU</li>
+                    <li><b>Volatility→Outcome</b> — вход vol vs результат</li>
+                    <li><b>GPU Batch MC</b> — 200K сценариев, correlation matrix</li>
+                    <li style="color:var(--accent-cyan);"><b>3-tier cache</b> — PostgreSQL 18.3 AIO, 21 индекс</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Tracked Metrics -->
+        <div class="section">
+            <h2 style="color:var(--accent-yellow);">
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+                </svg>
+                Data & ML Features
+                <span style="font-size:12px;color:var(--text-muted);font-weight:400;margin-left:auto;">13 таблиц · 48 колонок signals · 35 snapshot features</span>
+            </h2>
+            <p>Полный перечень данных, которые система собирает, анализирует и хранит для каждой сделки и решения.</p>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div class="metric-item" style="padding:18px;">
+                    <h3 style="color:var(--accent-blue);font-size:12px;">СИГНАЛ (signals · 48 cols)</h3>
+                    <div style="font-size:12px;color:var(--text-muted);line-height:1.9;margin-top:8px;">
+                        symbol · side · size · price_at_signal ·
+                        volatility · R:R · probability · win_rate ·
+                        trend · trend_strength · volume_level ·
+                        stop_loss · TP1/TP2/TP3 · trailing ·
+                        VaR · CVaR · liq_prob · latency_ms ·
+                        signal_score · recommendation · is_countertrend ·
+                        <span style="color:#f59e0b;">funding_rate · oi_change_pct · market_regime ·
+                        spread_pct · slippage_pct · multi_tf_trends ·
+                        shadow_pnl_1h · shadow_pnl_4h · shadow_outcome</span> ·
+                        score_components (JSONB) · payload_raw · risk_result
+                    </div>
+                </div>
+
+                <div class="metric-item" style="padding:18px;">
+                    <h3 style="color:var(--accent-green);font-size:12px;">ПОЗИЦИЯ (open_positions)</h3>
+                    <div style="font-size:12px;color:var(--text-muted);line-height:1.9;margin-top:8px;">
+                        entry_price · size · original_size ·
+                        current_price · current_pnl_pct ·
+                        max_pnl_pct · max_price_favorable ·
+                        drawdown_from_peak_pct · tp_progress_pct ·
+                        current_sl · original_sl · current_tp1/tp2/tp3 ·
+                        initial_signal_score · status · side ·
+                        close_reason · realized_pnl_pct ·
+                        <span style="color:var(--accent-purple);">signal_hash (trace_id)</span>
+                    </div>
+                </div>
+
+                <div class="metric-item" style="padding:18px;">
+                    <h3 style="color:var(--accent-purple);font-size:12px;">СКОРИНГ (7 компонентов)</h3>
+                    <div style="font-size:12px;color:var(--text-muted);line-height:1.9;margin-top:8px;">
+                        win_rate (25%) · probability (22%) ·
+                        risk_reward (17%) · trend_align (14%) ·
+                        vol_ok (7%) · liquidity_ok (8%) ·
+                        <span style="color:var(--accent-cyan);">funding_oi (7%)</span> ·
+                        kelly_f · confluence_score ·
+                        data_quality_penalty
+                    </div>
+                </div>
+
+                <div class="metric-item" style="padding:18px;">
+                    <h3 style="color:var(--accent-cyan);font-size:12px;">ML SNAPSHOT (35 features/tick)</h3>
+                    <div style="font-size:12px;color:var(--text-muted);line-height:1.9;margin-top:8px;">
+                        price · pnl_pct · max_pnl · drawdown ·
+                        tp_progress · spread · funding_rate ·
+                        oi_change · mc_p_tp · mc_p_sl ·
+                        <span style="color:var(--accent-cyan);">btc_change_1h · rsi_14 ·
+                        orderbook_imbalance · long_short_ratio ·
+                        regime · volume_ratio</span> ·
+                        <span style="color:var(--accent-purple);">fwd_pnl_5/25/50/75/95 · full_e_pnl</span>
+                    </div>
+                </div>
+
+                <div class="metric-item" style="padding:18px;">
+                    <h3 style="color:var(--accent-yellow);font-size:12px;">AUDIT LOG (JSONB details)</h3>
+                    <div style="font-size:12px;color:var(--text-muted);line-height:1.9;margin-top:8px;">
+                        trace_id · symbol · action · pos_id ·
+                        details (close_reason, pnl, drawdown, zone, MC) ·
+                        market_state (regime, btc_1h) ·
+                        <span style="color:var(--accent-green);">position_closed · phantom_transition ·
+                        observe_only · phantom_retry_ok ·
+                        grace_proven · apollo_shadow</span>
+                    </div>
+                </div>
+
+                <div class="metric-item" style="padding:18px;">
+                    <h3 style="color:var(--accent-green);font-size:12px;">EXIT QUALITY (what_if_outcomes)</h3>
+                    <div style="font-size:12px;color:var(--text-muted);line-height:1.9;margin-top:8px;">
+                        pnl_1h · pnl_4h · pnl_12h · pnl_24h ·
+                        max_favorable_1h/4h · max_adverse_1h/4h ·
+                        would_have_hit_tp · would_have_hit_sl ·
+                        tp_time_after_close · sl_time_after_close ·
+                        exchange_source · data_quality
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Roadmap -->
+        <div class="section">
+            <h2>
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                </svg>
+                Roadmap
+            </h2>
+            <ul class="roadmap">
+                <li><span class="tag tag-done">✓</span> <b>Phase 1-4</b> Core Risk Engine + Monte Carlo + Думалка Zone Policy + Active Mode</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.6–0.7</b> Portfolio Allocator, Regime Detector, OI/Funding, Data Quality Penalty</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.8.x</b> Observability, Watchlist Scanner, ML Readiness (25-feature snapshots)</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.9.x</b> PostgreSQL Migration, TG Digest, Contra-Trend Alerts, Time-Decay Exits</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.10.x</b> Flash Crash Monitor, Orderbook Shielding, PostgreSQL 18.3 + AIO (io_uring)</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.12.0</b> Adaptive Dumalka: Portfolio Heat, Moonbag, 10-Tier Differential MC</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.13.x</b> Desync Resolution, ATR-Adaptive BE, Apollo Protocol, ML Intelligence (4 features)</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.14.4</b> State Conflict Guard, Scoring Quality Suite, 6 ML Feature Cols</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.15.x</b> Apollo Audit, Bybit WebSocket (27 symbols), 30s Cycle, SL Cooldown</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.16.x</b> Scoring v2 Rebalance, Re-entry Protocol, Watchlist Overhaul</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.17.x</b> Proven Position, Grace Bypass, MC Zone Floor, Analytics Precompute</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.18.0</b> Exit Quality Tracker — post-close 1h/4h/12h/24h analysis, what-if SL/TP</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.18.1</b> Full E[PnL] Reform — MC expected PnL, momentum coordination, skewness override</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.18.4</b> Sticky Proven Position — grace bypass at max_pnl ≥ 3% и tp ≥ 50%</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.18.5</b> Exit Quality Pipeline Fix — 5 critical bugs, 100% coverage, multi-exchange kline</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.18.6</b> Structured Audit Log — pos_id, JSONB details, market_state, 11 event types, 95% coverage</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.18.8</b> Hard SL Cap — 3.5% аварийное закрытие (активно), PF 0.95→1.26</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.18.9</b> sl_breakeven Fix для SHORT + Zone 1 → Hold</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.19.0</b> Kline Storage + Scout — историческое хранилище свечей, автономные shadow-сигналы (EMA/RSI/Regime)</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.19.1</b> Scout Enhancement — +3 типа сигналов, +4 ML-фичи, derivatives_snapshots time-series</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.19.2</b> Rocket Catcher — multi-horizon ML (12h/max_24h), peak tracking, spike_consolidation_breakout, 34 символа</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.19.6</b> ML Shadow Mode — ExtraTrees+Optuna (AUC 0.621), предсказание вероятности профита после 5 снимков, ml_predictions таблица</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.19.6.1</b> Close Event Fix — VALID_EVENTS gate + /trade-outcome close handler, устранена 5-249 мин задержка синхронизации позиций</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.19.7</b> Health Watchdog — мониторинг 9 компонентов + bot-connectivity, TG-алерты с cooldown 30мин и recovery-уведомлениями</li>
+                <li><span class="tag tag-done">✓</span> <b>v0.19.8</b> API-first Bot Integration — Bot↔RE через чистый HTTP (без Telegram парсинга), rejection_reason в ответе, docs/BOT_API_CONTRACT.md</li>
+                <li><span class="tag tag-active">⚡</span> <b>Next</b> XGBoost Retraining: 103K+ снимков, multi-horizon labels, 33 features; Bot migration Phase 2</li>
+                <li><span class="tag tag-pending">⏳</span> <b>Backlog</b> Scout re-entry activation, Smart Entry (autonomous), Desync Shield v2, telegram_bridge deprecation</li>
+            </ul>
+        </div>
+
+        <!-- Tech -->
+        <div class="section">
+            <h2>
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                </svg>
+                Стек
+            </h2>
+            <div class="metric-grid">
+                <div class="metric-item">
+                    <h3>Backend</h3>
+                    <div>FastAPI + Python 3.13</div>
+                </div>
+                <div class="metric-item">
+                    <h3>GPU</h3>
+                    <div>Titan V · CuPy · CUDA 12</div>
+                </div>
+                <div class="metric-item">
+                    <h3>Database</h3>
+                    <div style="color:var(--accent-cyan);">PostgreSQL 18.3 · AIO</div>
+                </div>
+                <div class="metric-item">
+                    <h3>Frontend</h3>
+                    <div>JS · Chart.js · SSE</div>
+                </div>
+                <div class="metric-item">
+                    <h3>Exchange</h3>
+                    <div>Bybit WebSocket</div>
+                </div>
+                <div class="metric-item">
+                    <h3>Market Data</h3>
+                    <div>OKX · Binance · Bybit</div>
+                </div>
+                <div class="metric-item">
+                    <h3>Notifications</h3>
+                    <div>Telegram Bot API</div>
+                </div>
+                <div class="metric-item">
+                    <h3>System</h3>
+                    <div>systemd · logrotate</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Status -->
+        <div class="section" id="live-status" style="border-color:rgba(16,185,129,0.2);">
+            <h2 style="color:var(--accent-green);">
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.348 14.651a3.75 3.75 0 010-5.303m5.304 0a3.75 3.75 0 010 5.303m-7.425 2.122a6.75 6.75 0 010-9.546m9.546 0a6.75 6.75 0 010 9.546M5.106 18.894c-3.808-3.808-3.808-9.98 0-13.788m13.788 0c3.808 3.808 3.808 9.98 0 13.788M12 12h.008v.008H12V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                </svg>
+                Live Status
+                <span id="health-badge" class="tag tag-pending" style="margin-left:8px;">loading...</span>
+            </h2>
+            <div id="health-grid" class="metric-grid" style="margin-top:12px;">
+                <div class="metric-item"><h3>Status</h3><div id="h-status">—</div></div>
+                <div class="metric-item"><h3>Version</h3><div id="h-version">—</div></div>
+                <div class="metric-item"><h3>Uptime</h3><div id="h-uptime">—</div></div>
+                <div class="metric-item"><h3>GPU VRAM Free</h3><div id="h-gpu">—</div></div>
+            </div>
+            <div id="tasks-grid" class="metric-grid" style="margin-top:8px;"></div>
+        </div>
+
+        <div class="footer-nav">
+            <a href="/dashboard" class="nav-btn primary">← Дашборд</a>
+            <a href="/analytics" class="nav-btn secondary">Аналитика</a>
+        </div>
+        <p style="text-align:center;color:var(--text-muted);font-size:11px;margin-top:24px;opacity:0.5;">
+            REDU v0.19.8 · April 2026
+        </p>
+    </div>
+<script>
+(function() {
+    /* ── Live Health fetch ─── */
+    async function fetchHealth() {
+        try {
+            var r = await fetch('/health');
+            var d = await r.json();
+            var badge = document.getElementById('health-badge');
+            var ok = d.status === 'healthy' || d.status === 'ok';
+            badge.textContent = ok ? 'ONLINE' : d.status.toUpperCase();
+            badge.className = 'tag ' + (ok ? 'tag-done' : 'tag-active');
+
+            document.getElementById('h-status').innerHTML = ok
+                ? '<span style="color:var(--accent-green)">Healthy</span>'
+                : '<span style="color:var(--accent-yellow)">' + d.status + '</span>';
+            document.getElementById('h-version').textContent = d.version || '—';
+            var uh = d.uptime_hours;
+            if (uh != null) {
+                var h = Math.floor(uh), m = Math.round((uh - h) * 60);
+                document.getElementById('h-uptime').textContent = h + 'h ' + m + 'm';
+            }
+            if (d.memory_free_mb && d.memory_total_mb) {
+                var pct = Math.round(d.memory_free_mb / d.memory_total_mb * 100);
+                document.getElementById('h-gpu').innerHTML = (d.memory_free_mb / 1024).toFixed(1) + ' / '
+                    + (d.memory_total_mb / 1024).toFixed(1) + ' GB'
+                    + ' <span style="color:var(--text-muted);font-size:11px;">(' + pct + '% free)</span>';
+            }
+
+            var tg = document.getElementById('tasks-grid');
+            tg.innerHTML = '';
+            if (d.background_tasks) {
+                for (var k in d.background_tasks) {
+                    var raw = d.background_tasks[k];
+                    var st = (typeof raw === 'string') ? raw : (raw.status || 'unknown');
+                    var isOk = st === 'healthy';
+                    var isStale = st.indexOf('STALE') >= 0;
+                    var clr = isOk ? 'var(--accent-green)' : isStale ? 'var(--accent-yellow)' : 'var(--text-muted)';
+                    var icon = isOk ? '●' : isStale ? '✗' : '○';
+                    tg.innerHTML += '<div class="metric-item"><h3>' + k.replace(/_/g, ' ') + '</h3>'
+                        + '<div style="color:' + clr + ';font-size:13px;">' + icon + ' ' + st + '</div></div>';
+                }
+            }
+        } catch(e) {
+            var badge = document.getElementById('health-badge');
+            badge.textContent = 'OFFLINE'; badge.className = 'tag tag-active';
+            document.getElementById('h-status').innerHTML = '<span style="color:#ef4444;">Unreachable</span>';
+        }
+    }
+    fetchHealth();
+    setInterval(fetchHealth, 30000);
+
+    /* ── Generate star box-shadows centered on screen ───── */
+    function generateStars(count, color) {
+        var s = [];
+        for (var i = 0; i < count; i++) {
+            var x = Math.floor(Math.random() * 3000);
+            var y = Math.floor(Math.random() * 2000);
+            s.push(x + 'px ' + y + 'px ' + color);
+        }
+        return s.join(', ');
+    }
+
+    var layers = [
+        { dot: 'sd1', clone: 'sc1', count: 700, size: 1, color: '#fff' },
+        { dot: 'sd2', clone: 'sc2', count: 200, size: 2, color: '#fff' },
+        { dot: 'sd3', clone: 'sc3', count: 100, size: 3, color: 'rgba(255,255,255,0.85)' },
+    ];
+
+    layers.forEach(function(cfg) {
+        var shadow = generateStars(cfg.count, cfg.color);
+        var dot   = document.getElementById(cfg.dot);
+        var clone = document.getElementById(cfg.clone);
+        if (!dot || !clone) return;
+        var s = cfg.size + 'px';
+        dot.style.width = s;   dot.style.height = s;   dot.style.boxShadow = shadow;
+        clone.style.width = s; clone.style.height = s; clone.style.boxShadow = shadow;
+    });
+
+    /* ── Mouse parallax (spring-damped) ─── */
+    var pEl = document.getElementById('stars-parallax');
+    var factor = 0.02;
+    var tx = 0, ty = 0, cx = 0, cy = 0;
+
+    document.addEventListener('mousemove', function(e) {
+        tx = -(e.clientX - window.innerWidth / 2) * factor;
+        ty = -(e.clientY - window.innerHeight / 2) * factor;
+    });
+
+    (function loop() {
+        cx += (tx - cx) * 0.04;
+        cy += (ty - cy) * 0.04;
+        if (pEl) pEl.style.transform = 'translate(' + cx.toFixed(1) + 'px,' + cy.toFixed(1) + 'px)';
+        requestAnimationFrame(loop);
+    })();
+
+    /* ── Twinkle canvas: individual per-star glow ── */
+    var canvas = document.getElementById('twinkle-canvas');
+    var tctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    var twinkleStars = [];
+    for (var i = 0; i < 80; i++) {
+        twinkleStars.push({
+            x: Math.random() * window.innerWidth,
+            y: Math.random() * window.innerHeight,
+            radius: 0.5 + Math.random() * 1.0,
+            phase: Math.random() * Math.PI * 2,
+            speed: 0.2 + Math.random() * 0.6,
+            glowSize: 2 + Math.random() * 2,
+        });
+    }
+
+    function drawTwinkle(t) {
+        tctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (var i = 0; i < twinkleStars.length; i++) {
+            var s = twinkleStars[i];
+            var brightness = 0.5 + 0.5 * Math.sin(t * 0.001 * s.speed + s.phase);
+            var alpha = brightness * brightness;
+            var glow = s.glowSize * brightness;
+
+            // Subtle outer glow
+            tctx.beginPath();
+            tctx.arc(s.x, s.y, glow, 0, Math.PI * 2);
+            tctx.fillStyle = 'rgba(200,220,255,' + (alpha * 0.06).toFixed(3) + ')';
+            tctx.fill();
+
+            // Core dot
+            tctx.beginPath();
+            tctx.arc(s.x, s.y, s.radius * brightness + 0.2, 0, Math.PI * 2);
+            tctx.fillStyle = 'rgba(255,255,255,' + (alpha * 0.7).toFixed(3) + ')';
+            tctx.fill();
+        }
+        requestAnimationFrame(drawTwinkle);
+    }
+    requestAnimationFrame(drawTwinkle);
+})();
+</script>
+</body>
+
+</html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings | Midas Trading Bot</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/2544/2544131.png">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="brand"><h1>Midas Trading Bot</h1></div>
+            <div class="bot-control-panel">
+                <div class="bot-status">
+                    <span id="bot-status-badge" class="status-badge {{ 'running' if status.is_running else '' }}"></span>
+                    <span id="status-text">{{ 'Работает' if status.is_running else 'Остановлен' }}</span>
+                </div>
+                <button id="btn-toggle-bot" onclick="toggleBot()" class="btn-primary {{ 'running' if status.is_running else '' }}">
+                    {{ 'Остановить' if status.is_running else 'Запустить' }}
+                </button>
+            </div>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card"><h3>Баланс</h3><div class="stat-value balance" id="stat-balance">${{ "%.2f"|format(balance) }} USDT</div>{% if balance_error %}<div class="balance-error" style="font-size:12px;color:var(--danger);margin-top:4px">{{ balance_error }}</div>{% endif %}</div>
+            <div class="stat-card"><h3>Активных сделок</h3><div class="stat-value" id="stat-active-trades">{{ active_trades|length }}</div></div>
+            <div class="stat-card"><h3>Сигналов</h3><div class="stat-value" id="stat-signals-count">{{ status.signals_count }}</div></div>
+        </div>
+
+        <nav class="nav-tabs">
+            <a href="/" class="tab">История</a>
+            <a href="/signals" class="tab">Сигналы</a>
+            <a href="/settings" class="tab active">Настройки</a>
+            <a href="/logs" class="tab">Логи</a>
+        </nav>
+
+        <section class="content-section">
+            <div class="settings-container">
+                <div class="settings-section" style="border: 1px solid var(--primary); padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                    <h3>Авторизация Telegram (Аккаунт бота)</h3>
+                    <p style="color:var(--text-dim);font-size:13px;margin-bottom:15px">
+                        Бот читает сигналы через пользовательский Telegram.
+                        Статус сессии: <strong id="tg-auth-status" style="color:var(--warning)">Проверка...</strong>
+                    </p>
+                    <div id="tg-auth-request" style="margin-bottom: 15px;">
+                        <input type="text" id="tg-phone" value="+79268279482" placeholder="+79991234567" style="padding:8px; width:200px">
+                        <button type="button" class="btn-primary" onclick="requestTelegramCode()" style="margin-left: 10px;">Запросить код</button>
+                    </div>
+                    <div id="tg-auth-verify" style="display:none; margin-bottom: 15px;">
+                        <input type="text" id="tg-code" placeholder="Код из Telegram" style="padding:8px; width:150px">
+                        <input type="password" id="tg-password" placeholder="2FA пароль (если есть)" style="padding:8px; width:200px; margin-left: 10px;">
+                        <button type="button" class="btn-primary" onclick="verifyTelegramCode()" style="margin-left: 10px;">Отправить код</button>
+                    </div>
+                    <p id="tg-auth-msg" style="font-size:13px;margin-top:10px"></p>
+                </div>
+
+                <form action="/settings" method="post" class="settings-form">
+
+                    <div class="settings-section">
+                        <h3>Bybit API</h3>
+                        <div class="setting-item">
+                            <div class="setting-info"><label>API Key</label><p>{{ 'Настроен' if user.bybit_api_key else 'Не настроен' }}</p></div>
+                            <div class="setting-input"><input type="text" name="bybit_api_key" placeholder="Оставьте пустым" style="width:280px"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div class="setting-info"><label>API Secret</label><p>{{ 'Настроен' if user.bybit_api_secret else 'Не настроен' }}</p></div>
+                            <div class="setting-input"><input type="password" name="bybit_api_secret" placeholder="Оставьте пустым" style="width:280px"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div class="setting-info"><label>Testnet</label><p>Демо-счёт Bybit</p></div>
+                            <div class="setting-input"><input type="checkbox" name="is_testnet" value="true" {{ 'checked' if user.is_testnet else '' }} style="width:auto"></div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <h3>Управление рисками</h3>
+                        <div class="setting-item">
+                            <div class="setting-info"><label>Депозит на сделку (%)</label><p>Часть баланса на одну позицию</p></div>
+                            <div class="setting-input"><input type="number" name="deposit_percent" value="{{ settings_obj.deposit_percent }}" step="0.1" min="0.1" max="100"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div class="setting-info"><label>Плечо (Leverage)</label><p>Кредитное плечо для сделок</p></div>
+                            <div class="setting-input"><input type="number" name="leverage" value="{{ settings_obj.leverage }}" min="1" max="125"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div class="setting-info"><label>Макс. отклонение цены (%)</label><p>Пропускать если цена ушла далеко</p></div>
+                            <div class="setting-input"><input type="number" name="max_price_deviation" value="{{ settings_obj.max_price_deviation }}" step="0.1" min="0" max="10"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div class="setting-info"><label>Безопасный SL (%)</label><p>Если SL не указан в сигнале</p></div>
+                            <div class="setting-input"><input type="number" name="default_stop_loss_percent" value="{{ settings_obj.default_stop_loss_percent or 10.0 }}" step="0.1" min="1" max="50"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div class="setting-info"><label>Макс. открытых позиций</label><p>Kill switch: лимит сделок</p></div>
+                            <div class="setting-input"><input type="number" name="max_open_positions" value="{{ settings_obj.max_open_positions or 3 }}" min="1" max="20"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div class="setting-info"><label>Макс. дневной убыток (%)</label><p>Kill switch: стоп при убытке</p></div>
+                            <div class="setting-input"><input type="number" name="max_daily_loss_percent" value="{{ settings_obj.max_daily_loss_percent or 10.0 }}" step="0.5" min="1" max="50"></div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <h3>Источник сигналов</h3>
+                        <p style="color:var(--text-dim);margin-bottom:20px;font-size:13px">Укажите ID или username бота-источника сигналов. Пустое = любой бот.</p>
+                        <div class="setting-item">
+                            <div class="setting-info"><label>Bot ID</label><p>Числовой ID бота</p></div>
+                            <div class="setting-input"><input type="text" name="signal_bot_id" value="{{ settings_obj.signal_bot_id or '' }}" placeholder="123456789" style="width:200px"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div class="setting-info"><label>Bot Username</label><p>Username без @</p></div>
+                            <div class="setting-input"><input type="text" name="signal_bot_username" value="{{ settings_obj.signal_bot_username or '' }}" placeholder="signal_bot" style="width:200px"></div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <h3>LLM (AI валидация)</h3>
+                        <p style="color:var(--text-dim);margin-bottom:20px;font-size:13px">LLM проверяет парсинг и решает открывать ли сделку.</p>
+                        <div class="setting-item">
+                            <div class="setting-info"><label>LLM валидация</label><p>Включить AI-проверку</p></div>
+                            <div class="setting-input"><input type="checkbox" name="llm_validation_enabled" value="true" {{ 'checked' if settings_obj.llm_validation_enabled != false else '' }} style="width:auto"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div class="setting-info"><label>OpenRouter API Key</label><p>{{ 'Настроен в БД' if settings_obj.openrouter_api_key else 'Из .env' }}</p></div>
+                            <div class="setting-input"><input type="password" name="openrouter_api_key" placeholder="sk-or-v1-..." style="width:280px"></div>
+                        </div>
+                        <div class="setting-item">
+                            <div class="setting-info"><label>Модель</label><p>ID модели OpenRouter</p></div>
+                            <div class="setting-input"><input type="text" name="openrouter_model" value="{{ settings_obj.openrouter_model or 'qwen/qwen3-coder:free' }}" style="width:280px"></div>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <h3>Telegram уведомления</h3>
+                        <p style="color:var(--text-dim);margin-bottom:20px;font-size:13px">Уведомления шлются через тот же Telegram-аккаунт, что читает сигналы. Укажите ID чата/группы или юзернейм публичной группы (например <code>uebot_report</code> или <code>@uebot_report</code>).</p>
+                        <div class="setting-item">
+                            <div class="setting-info"><label>Chat ID или @username</label><p>Числовой ID (например -100123456) или юзернейм публичной группы (например uebot_report)</p></div>
+                            <div class="setting-input"><input type="text" name="telegram_notify_chat_id" value="{{ settings_obj.telegram_notify_chat_id or '' }}" placeholder="-100123456 или uebot_report" style="width:200px"></div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn-primary">Сохранить настройки</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+    </div>
+    <div id="toast-container"></div>
+    <script src="/static/js/bot.js?v={{ range(1, 1000000) | random }}"></script>
+</body>
+</html>

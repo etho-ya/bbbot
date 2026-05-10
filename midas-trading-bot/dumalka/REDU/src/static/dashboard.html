@@ -1,0 +1,2130 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Risk Engine — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg-primary: #0a0e17;
+      --bg-card: #111827;
+      --bg-card-hover: #1a2332;
+      --border: #1e293b;
+      --text-primary: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent-green: #10b981;
+      --accent-red: #ef4444;
+      --accent-yellow: #f59e0b;
+      --accent-blue: #3b82f6;
+      --accent-purple: #8b5cf6;
+      --accent-cyan: #06b6d4;
+      --accent-green-glow: rgba(16, 185, 129, 0.15);
+      --accent-red-glow: rgba(239, 68, 68, 0.15);
+      --accent-yellow-glow: rgba(245, 158, 11, 0.15);
+      --gradient-1: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --gradient-2: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      --gradient-3: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      --gradient-4: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Header ─────────────────────────────────────── */
+    .header {
+      background: transparent;
+      border-bottom: none;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      transition: background 0.4s ease, backdrop-filter 0.4s ease;
+    }
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: -20px; left: 0; right: 0;
+      height: 20px;
+      background: linear-gradient(to bottom, rgba(10,14,23,0.3), transparent);
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      pointer-events: none;
+    }
+    .header.scrolled {
+      background: rgba(10, 14, 23, 0.55);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    .header.scrolled::after {
+      opacity: 1;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .logo {
+      width: 40px;
+      height: 40px;
+      background: var(--gradient-1);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .header h1 {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+    }
+
+    .header h1 span {
+      color: var(--accent-purple);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .status-badge {
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-badge.healthy {
+      background: var(--accent-green-glow);
+      color: var(--accent-green);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .status-badge.unhealthy {
+      background: var(--accent-red-glow);
+      color: var(--accent-red);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.4;
+      }
+    }
+
+    .refresh-btn {
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: var(--accent-blue);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+
+    .refresh-btn:hover {
+      background: rgba(59, 130, 246, 0.25);
+    }
+
+    /* ── Language Switcher ──────────────────────────── */
+    .lang-switcher {
+      display: flex;
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 2px;
+    }
+
+    .lang-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+
+    .lang-btn.active {
+      background: var(--accent-purple);
+      color: white;
+    }
+
+    .lang-btn:hover:not(.active) {
+      color: var(--text-primary);
+    }
+
+    /* ── Grid Layout ─────────────────────────────────── */
+    .dashboard {
+      padding: 24px 32px;
+      max-width: 1440px;
+      margin: 0 auto;
+    }
+
+    .grid-top {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .grid-charts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .grid-bottom {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    /* ── Stat Cards ─────────────────────────────────── */
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stat-card:hover {
+      border-color: rgba(139, 92, 246, 0.3);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .stat-card .label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .stat-card .value {
+      font-size: 28px;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: -1px;
+    }
+
+    .stat-card .sub {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 6px;
+    }
+
+    .stat-card .icon {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    /* ── Chart Cards ─────────────────────────────────── */
+    .chart-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      transition: all 0.3s;
+    }
+
+    .chart-card:hover {
+      border-color: rgba(59, 130, 246, 0.3);
+    }
+
+    .chart-card h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .chart-card h3 .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .chart-container {
+      position: relative;
+      height: 260px;
+    }
+
+    /* ── Signals Table ───────────────────────────────── */
+    .table-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      /* overflow: hidden; -- removed to allow tooltips */
+      position: relative;
+    }
+
+    .table-card h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .table-wrapper {
+      overflow: visible;
+      /* ensure vertical tooltips aren't clipped */
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    thead th {
+      background: rgba(30, 41, 59, 0.5);
+      padding: 10px 14px;
+      text-align: left;
+      font-weight: 600;
+      color: var(--text-secondary);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.2s;
+    }
+
+    thead th:hover {
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--text-primary);
+    }
+
+    thead th::after {
+      content: ' •';
+      opacity: 0.2;
+      padding-left: 4px;
+      font-size: 10px;
+    }
+
+    thead th.sort-asc::after {
+      content: ' ▲';
+      opacity: 1;
+      color: var(--accent-purple);
+    }
+
+    thead th.sort-desc::after {
+      content: ' ▼';
+      opacity: 1;
+      color: var(--accent-purple);
+    }
+
+    tbody td {
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(30, 41, 59, 0.3);
+      white-space: nowrap;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+    }
+
+    tbody tr:hover {
+      background: var(--bg-card-hover);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .badge.approve {
+      background: var(--accent-green-glow);
+      color: var(--accent-green);
+    }
+
+    .badge.reject {
+      background: var(--accent-red-glow);
+      color: var(--accent-red);
+    }
+
+    .badge.reduce {
+      background: var(--accent-yellow-glow);
+      color: var(--accent-yellow);
+    }
+
+    .badge.long {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent-green);
+    }
+
+    .badge.short {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--accent-red);
+    }
+
+    .badge.ct {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--accent-yellow);
+    }
+
+    /* ── Score bars ──────────────────────────────────── */
+    .score-bar-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .score-bar {
+      width: 60px;
+      height: 6px;
+      background: rgba(100, 116, 139, 0.3);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .score-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.5s ease;
+    }
+
+    /* ── Score Components Popup (v0.6.0) ─────────────── */
+    .score-cell { position: relative; cursor: pointer; }
+    .score-popup {
+      display: none;
+      position: absolute;
+      bottom: 130%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1a2332;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      min-width: 200px;
+      z-index: 9999;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    }
+    .score-cell:hover .score-popup { display: block; }
+    .score-popup .comp-row {
+      display: flex; justify-content: space-between;
+      font-size: 11px; padding: 2px 0;
+    }
+    .score-popup .comp-row .comp-name { color: var(--text-muted); }
+    .score-popup .comp-row .comp-val { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+    .score-popup .comp-bar {
+      width: 50px; height: 4px; background: rgba(100,116,139,0.3);
+      border-radius: 2px; overflow: hidden; display: inline-block; margin-left: 8px; vertical-align: middle;
+    }
+    .score-popup .comp-bar-fill { height: 100%; border-radius: 2px; }
+
+    /* ── Sector badges (v0.6.0) ──────────────────────── */
+    .badge.sector-btc { background: rgba(247,147,26,0.15); color: #f7931a; }
+    .badge.sector-eth { background: rgba(98,126,234,0.15); color: #627eea; }
+    .badge.sector-major { background: rgba(6,182,212,0.15); color: var(--accent-cyan); }
+    .badge.sector-alt { background: rgba(245,158,11,0.15); color: var(--accent-yellow); }
+
+    /* ── Trend confluence (v0.6.0) ───────────────────── */
+    .tf-dots { display: flex; gap: 3px; align-items: center; }
+    .tf-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      border: 1.5px solid var(--text-muted); background: transparent;
+    }
+    .tf-dot.bull { background: var(--accent-green); border-color: var(--accent-green); }
+    .tf-dot.bear { background: var(--accent-red); border-color: var(--accent-red); }
+
+    /* ── GPU Card ────────────────────────────────────── */
+    .gpu-card {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+    }
+
+    .gpu-info {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .gpu-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .gpu-row .k {
+      color: var(--text-muted);
+    }
+
+    .gpu-row .v {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .mem-bar {
+      width: 100%;
+      height: 6px;
+      background: rgba(100, 116, 139, 0.3);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+
+    .mem-bar-fill {
+      height: 100%;
+      background: var(--gradient-1);
+      border-radius: 3px;
+      transition: width 0.8s;
+    }
+
+    /* ── Loading ─────────────────────────────────────── */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 200px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid rgba(139, 92, 246, 0.2);
+      border-top-color: var(--accent-purple);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 12px;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* ── Tooltips ─────────────────────────────────────── */
+    [data-tooltip] {
+      position: relative;
+      cursor: help;
+    }
+
+    [data-tooltip]:before {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 125%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: none;
+      white-space: normal;
+      width: 180px;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
+      border: 1px solid var(--border);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.2s, transform 0.2s;
+      z-index: 999999;
+      line-height: 1.4;
+      pointer-events: none;
+    }
+
+    [data-tooltip]:hover:before {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ── Responsive ──────────────────────────────────── */
+    @media (max-width: 1024px) {
+      .grid-top {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .grid-charts {
+        grid-template-columns: 1fr;
+      }
+
+      .dashboard {
+        padding: 16px;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .grid-top {
+        grid-template-columns: 1fr;
+      }
+
+      .header {
+        padding: 12px 16px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ── Header ──────────────────────────────────────── -->
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">
+        <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 24px; height: 24px; color: white;">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+        </svg>
+      </div>
+      <h1 data-i18n="header_title">Risk <span>Engine</span> Dashboard</h1>
+    </div>
+    <div class="header-right">
+      <a href="/analytics"
+        style="color:var(--text-muted);text-decoration:none;font-size:12px;font-weight:600;margin-right:16px;display:flex;align-items:center;gap:6px;"
+        onmouseover="this.style.color='white'" onmouseout="this.style.color='var(--text-muted)'">
+        <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 16px; height: 16px;">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+        </svg>
+        <span data-i18n="nav_analytics">Analytics</span>
+      </a>
+      <a href="/info"
+        style="color:var(--text-muted);text-decoration:none;font-size:12px;font-weight:600;margin-right:16px;display:flex;align-items:center;gap:6px;"
+        onmouseover="this.style.color='white'" onmouseout="this.style.color='var(--text-muted)'">
+        <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 16px; height: 16px;">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+        </svg>
+        <span data-i18n="nav_about">About Project</span>
+      </a>
+      <div class="lang-switcher">
+        <button class="lang-btn active" onclick="setLanguage('en')">EN</button>
+        <button class="lang-btn" onclick="setLanguage('ru')">RU</button>
+      </div>
+      <div id="gpu-badge" class="status-badge healthy">
+        <span class="status-dot"></span>
+        <span id="gpu-status-text" data-i18n="status_loading">Loading...</span>
+      </div>
+      <button class="refresh-btn" onclick="refreshAll()" data-i18n="btn_refresh">↻ Refresh</button>
+    </div>
+  </div>
+
+  <!-- ── Dashboard ───────────────────────────────────── -->
+  <div class="dashboard">
+
+    <!-- ── Top Stats ────────────────────────────────── -->
+    <div class="grid-top">
+      <div class="stat-card">
+        <div class="icon" style="background:var(--accent-green-glow);color:var(--accent-green)">
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 20px; height: 20px;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+          </svg>
+        </div>
+        <div class="label" data-i18n="stat_total">Total Signals</div>
+        <div class="value" id="stat-total">—</div>
+        <div class="sub" id="stat-total-sub" data-i18n="stat_total_sub">processed by Risk Engine</div>
+      </div>
+      <div class="stat-card">
+        <div class="icon" style="background:var(--accent-green-glow);color:var(--accent-green)">
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 20px; height: 20px;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z" />
+          </svg>
+        </div>
+        <div class="label" data-i18n="stat_approved">Approved</div>
+        <div class="value" id="stat-approved" style="color:var(--accent-green)">—</div>
+        <div class="sub" id="stat-approved-sub" data-i18n="stat_approved_sub">signals passed risk check</div>
+      </div>
+      <div class="stat-card">
+        <div class="icon" style="background:var(--accent-red-glow);color:var(--accent-red)">
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 20px; height: 20px;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div class="label" data-i18n="stat_rejected">Rejected</div>
+        <div class="value" id="stat-rejected" style="color:var(--accent-red)">—</div>
+        <div class="sub" id="stat-rejected-sub" data-i18n="stat_rejected_sub">blocked by scoring + MC</div>
+      </div>
+      <div class="stat-card">
+        <div class="icon" style="background:rgba(6,182,212,0.15);color:var(--accent-cyan)">
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 20px; height: 20px;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+          </svg>
+        </div>
+        <div class="label" data-i18n="stat_latency">Avg Latency</div>
+        <div class="value" id="stat-latency" style="color:var(--accent-cyan)">—</div>
+        <div class="sub" data-i18n="stat_latency_sub">GPU Monte Carlo + fetch</div>
+      </div>
+      <div class="stat-card" style="background: linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(6,182,212,0.05) 100%); border-color: rgba(16,185,129,0.2);">
+        <div class="icon" style="background:rgba(16,185,129,0.15);color:var(--accent-green)">
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 20px; height: 20px;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+          </svg>
+        </div>
+        <div class="label" data-i18n="stat_balance">Bybit Balance</div>
+        <div class="value" id="stat-balance" style="color:var(--accent-green)">—</div>
+        <div class="sub" id="stat-balance-sub">loading...</div>
+      </div>
+    </div>
+
+    <!-- ── v0.10.1 Feature Monitoring ─────────────── -->
+    <div style="margin-top:20px;margin-bottom:20px">
+
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px;">
+        <!-- Sentinel Status -->
+        <div class="stat-card" id="widget-sentinel" style="background: linear-gradient(135deg, rgba(239,68,68,0.06) 0%, rgba(245,158,11,0.04) 100%); border-color: rgba(239,68,68,0.15);">
+          <div class="icon" style="background:rgba(239,68,68,0.12);color:var(--accent-red)">
+            🛡️
+          </div>
+          <div class="label">Binance Sentinel</div>
+          <div class="value" id="sentinel-price" style="font-size:20px;color:var(--accent-cyan)">—</div>
+          <div class="sub" id="sentinel-sub">connecting...</div>
+        </div>
+
+        <!-- v0.15.1: Bybit WS Price Feed -->
+        <div class="stat-card" id="widget-bybit-ws" style="background: linear-gradient(135deg, rgba(6,182,212,0.08) 0%, rgba(16,185,129,0.04) 100%); border-color: rgba(6,182,212,0.2);">
+          <div class="icon" style="background:rgba(6,182,212,0.12);color:var(--accent-cyan)">
+            📡
+          </div>
+          <div class="label">Bybit WS Feed</div>
+          <div class="value" id="ws-feed-status" style="font-size:18px;color:var(--text-muted)">—</div>
+          <div class="sub" id="ws-feed-sub">connecting...</div>
+        </div>
+
+        <!-- Orderbook Shielding -->
+        <div class="stat-card" style="background: linear-gradient(135deg, rgba(59,130,246,0.06) 0%, rgba(6,182,212,0.04) 100%); border-color: rgba(59,130,246,0.15);">
+          <div class="icon" style="background:rgba(59,130,246,0.12);color:var(--accent-blue)">
+            📊
+          </div>
+          <div class="label">Orderbook Shielding</div>
+          <div class="value" style="font-size:20px;color:var(--accent-green)">Active</div>
+          <div class="sub">Dynamic SL behind L2 walls (≥5× median)</div>
+        </div>
+
+        <!-- Yield-Aware Apollo -->
+        <div class="stat-card" style="background: linear-gradient(135deg, rgba(245,158,11,0.06) 0%, rgba(16,185,129,0.04) 100%); border-color: rgba(245,158,11,0.15);">
+          <div class="icon" style="background:rgba(245,158,11,0.12);color:var(--accent-yellow)">
+            💰
+          </div>
+          <div class="label">Yield-Aware Apollo</div>
+          <div class="value" style="font-size:20px;color:var(--accent-green)">Active</div>
+          <div class="sub">Funding Rate → TIME_DECAY: 2h–6h adaptive</div>
+        </div>
+
+        <div class="stat-card" style="background: linear-gradient(135deg, rgba(139,92,246,0.06) 0%, rgba(59,130,246,0.04) 100%); border-color: rgba(139,92,246,0.15);">
+          <div class="icon" style="background:rgba(139,92,246,0.12);color:var(--accent-purple)">
+            ⚡
+          </div>
+          <div class="label">DB Hardened</div>
+          <div class="value" style="font-size:20px;color:var(--accent-green)">PG18</div>
+          <div class="sub">CHECK + FK + ON CONFLICT (v0.15.9)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Risk Metrics (v0.14.4: Sharpe, Sortino, MaxDD, PF, Calmar) ──── -->
+    <div style="padding:0 32px;margin-bottom:20px;">
+      <div id="risk-metrics-bar" style="
+        display:grid; grid-template-columns:repeat(6,1fr); gap:12px;
+        background:linear-gradient(135deg, rgba(139,92,246,0.04) 0%, rgba(6,182,212,0.04) 100%);
+        border:1px solid rgba(139,92,246,0.15); border-radius:16px; padding:20px 24px;
+      ">
+        <div style="text-align:center; cursor:help;" data-tooltip="Sharpe Ratio: Показатель эффективности инвестиционного портфеля (annualized). Отношение средней премии за риск к среднему отклонению.">
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">📈 Sharpe Ratio</div>
+          <div id="rm-sharpe" style="font-size:22px;font-weight:700;color:var(--accent-purple);font-family:'JetBrains Mono',monospace;">—</div>
+          <div style="font-size:9px;color:var(--text-muted);margin-top:2px;">annualized</div>
+        </div>
+        <div style="text-align:center; cursor:help;" data-tooltip="Sortino Ratio: Оценивает доходность с поправкой на риск падения (downside risk only). Штрафует только за отрицательную волатильность.">
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">🎯 Sortino Ratio</div>
+          <div id="rm-sortino" style="font-size:22px;font-weight:700;color:var(--accent-cyan);font-family:'JetBrains Mono',monospace;">—</div>
+          <div style="font-size:9px;color:var(--text-muted);margin-top:2px;">downside risk only</div>
+        </div>
+        <div style="text-align:center; cursor:help;" data-tooltip="Max Drawdown: Максимальная историческая просадка (peak-to-trough). Наибольшее падение от локального максимума до минимума.">
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">📉 Max Drawdown</div>
+          <div id="rm-maxdd" style="font-size:22px;font-weight:700;color:var(--accent-red);font-family:'JetBrains Mono',monospace;">—</div>
+          <div style="font-size:9px;color:var(--text-muted);margin-top:2px;">peak-to-trough</div>
+        </div>
+        <div style="text-align:center; cursor:help;" data-tooltip="Profit Factor: Отношение общей валовой прибыли к общему валовому убытку (gross profit / loss). Значение > 1.0 означает прибыльность.">
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">💰 Profit Factor</div>
+          <div id="rm-pf" style="font-size:22px;font-weight:700;color:var(--accent-green);font-family:'JetBrains Mono',monospace;">—</div>
+          <div style="font-size:9px;color:var(--text-muted);margin-top:2px;">gross profit / loss</div>
+        </div>
+        <div style="text-align:center; cursor:help;" data-tooltip="Calmar Ratio: Отношение среднегодовой доходности к максимальной просадке (return / max DD).">
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">🏔️ Calmar Ratio</div>
+          <div id="rm-calmar" style="font-size:22px;font-weight:700;color:var(--accent-yellow);font-family:'JetBrains Mono',monospace;">—</div>
+          <div style="font-size:9px;color:var(--text-muted);margin-top:2px;">return / max DD</div>
+        </div>
+        <div style="text-align:center; cursor:help;" data-tooltip="Win Days: Соотношение профитных торговых дней к общему числу дней с активными сделками.">
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">📊 Win Days</div>
+          <div id="rm-windays" style="font-size:22px;font-weight:700;color:var(--accent-green);font-family:'JetBrains Mono',monospace;">—</div>
+          <div id="rm-windays-sub" style="font-size:9px;color:var(--text-muted);margin-top:2px;">of — trading days</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Midas Benchmark (v0.16.0 2026-03-31, v0.16.1 corrected metrics 2026-03-31) ── -->
+    <div style="padding:0 32px;margin-bottom:20px;">
+      <div id="midas-benchmark-bar" style="
+        display:grid; grid-template-columns:repeat(6,1fr); gap:12px;
+        background:linear-gradient(135deg, rgba(245,158,11,0.06) 0%, rgba(239,68,68,0.04) 100%);
+        border:1px solid rgba(245,158,11,0.2); border-radius:16px; padding:20px 24px;
+      ">
+        <div style="text-align:center;grid-column:1/7;margin-bottom:8px;">
+          <span style="font-size:13px;font-weight:600;color:var(--text-secondary);">📊 Midas Signal Benchmark (shadow 4h, real klines)</span>
+        </div>
+        <div style="text-align:center;" data-tooltip="Средний shadow PnL по ВСЕМ сигналам Midas (approve+reduce+reject). Baseline: что было бы без фильтра RE.">
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">Midas Avg</div>
+          <div id="mb-midas-avg" style="font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace;">—</div>
+          <div style="font-size:9px;color:var(--text-muted);margin-top:2px;">all signals</div>
+        </div>
+        <div style="text-align:center;" data-tooltip="Средний shadow PnL только для одобренных RE сигналов.">
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">RE Approve</div>
+          <div id="mb-approve-avg" style="font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace;">—</div>
+          <div style="font-size:9px;color:var(--text-muted);margin-top:2px;">filtered</div>
+        </div>
+        <div style="text-align:center;" data-tooltip="Дельта: RE Approve − Midas All. Положительная = RE добавляет ценность.">
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">RE Delta</div>
+          <div id="mb-delta" style="font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace;">—</div>
+          <div style="font-size:9px;color:var(--text-muted);margin-top:2px;">approve − all</div>
+        </div>
+        <div style="text-align:center;" data-tooltip="TP Win Rate по всем завершённым сигналам (tp / (tp+sl)).">
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">TP Win Rate</div>
+          <div id="mb-tp-wr" style="font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace;">—</div>
+          <div style="font-size:9px;color:var(--text-muted);margin-top:2px;">tp / (tp+sl)</div>
+        </div>
+        <div style="text-align:center;" data-tooltip="Среднее время до резолюции (SL или TP hit) в часах.">
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">Avg Resolve</div>
+          <div id="mb-resolve-h" style="font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace;">—</div>
+          <div style="font-size:9px;color:var(--text-muted);margin-top:2px;">hours to SL/TP</div>
+        </div>
+        <div style="text-align:center;" data-tooltip="Всего сигналов с shadow данными / из них ещё не завершены (open).">
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">Coverage</div>
+          <div id="mb-coverage" style="font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace;">—</div>
+          <div style="font-size:9px;color:var(--text-muted);margin-top:2px;">resolved / open</div>
+        </div>
+        <div style="text-align:center;grid-column:1/7;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);">
+          <span style="font-size:11px;color:var(--text-muted);">⚠️ Corrected (undo win_rate parsing bug penalty):</span>
+          <span id="mb-corrected-info" style="font-size:12px;font-weight:600;font-family:'JetBrains Mono',monospace;margin-left:8px;">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Charts Row ──────────────────────────────── -->
+    <div class="grid-charts">
+      <!-- Recommendation Breakdown -->
+      <div class="chart-card">
+        <h3><span class="dot" style="background:var(--accent-purple)"></span><span data-i18n="chart_recs">Recommendation
+            Breakdown</span></h3>
+        <div class="chart-container">
+          <canvas id="chart-recs"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <h3><span class="dot" style="background:var(--accent-yellow)"></span><span data-i18n="chart_score_outcome">Score → Outcome</span></h3>
+        <div class="chart-container">
+          <canvas id="chart-score-outcome"></canvas>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <h3><span class="dot" style="background:var(--accent-blue)"></span><span data-i18n="chart_var">VaR / CVaR by
+            Symbol</span></h3>
+        <div class="chart-container">
+          <canvas id="chart-var"></canvas>
+        </div>
+      </div>
+
+      <!-- GPU + Engine Info -->
+      <div class="chart-card gpu-card">
+        <h3><span class="dot" style="background:var(--accent-purple)"></span><span id="gpu-header-name">GPU &
+            Engine</span></h3>
+        <div class="gpu-info" id="gpu-info">
+          <div class="loading">
+            <div class="spinner"></div><span data-i18n="gpu_loading">Loading GPU info...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Open Positions (Думалка Tracker) — shown first: live money priority ── -->
+    <div class="grid-bottom">
+      <div class="table-card">
+        <h3 style="display:flex;align-items:center;gap:8px;">
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="var(--accent-cyan)" style="width: 18px; height: 18px;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+          </svg>
+          Open Positions — Думалка Tracker (Active Mode v0.16)
+        </h3>
+        <div class="table-wrapper">
+          <table>
+            <thead id="positions-thead">
+              <tr>
+                <th onclick="sortPositions('opened_at')">Opened</th>
+                <th onclick="sortPositions('symbol')">Symbol</th>
+                <th onclick="sortPositions('side')">Side</th>
+                <th onclick="sortPositions('entry_price')">Entry</th>
+                <th onclick="sortPositions('current_price')">Current</th>
+                <th onclick="sortPositions('close_price')">Close</th>
+                <th onclick="sortPositions('current_pnl_pct')">PnL %</th>
+                <th onclick="sortPositions('max_pnl_pct')">Max PnL %</th>
+                <th onclick="sortPositions('tp_progress_pct')">TP Progress</th>
+                <th onclick="sortPositions('current_sl')">SL</th>
+                <th onclick="sortPositions('initial_signal_score')">Score</th>
+                <th onclick="sortPositions('status')">Status</th>
+              </tr>
+            </thead>
+            <tbody id="positions-tbody">
+              <tr>
+                <td colspan="12" class="loading">
+                  <div class="spinner"></div>Loading...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── Signal History Table ────────────────────── -->
+      <div class="table-card" style="margin-top:16px">
+        <h3 data-i18n="table_title" style="display:flex;align-items:center;gap:8px;">
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="var(--text-muted)" style="width: 18px; height: 18px;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+          </svg>
+          Signal History — Recent Evaluations
+        </h3>
+        <div class="table-wrapper">
+          <table>
+            <thead id="signals-thead">
+              <tr>
+                <th onclick="sortSignals('time')" data-tooltip="Entry time of the signal evaluation.">Time</th>
+                <th data-tooltip="Trading pair (e.g. BTCUSDT).">Symbol</th>
+                <th data-tooltip="Trade direction: Long or Short.">Side</th>
+                <th data-tooltip="Asset price at the time of the signal.">Price</th>
+                <th onclick="sortSignals('now_price')" data-tooltip="Current real-time price from Bybit WebSocket feed. Color shows direction since signal.">Now</th>
+                <th onclick="sortSignals('shadow')" data-tooltip="Shadow PnL: counterfactual outcome if the Midas signal was followed (SL/TP simulation on real klines). TP = take-profit hit, SL = stop-loss hit.">Shadow</th>
+                <th data-tooltip="Annualized volatility calculated by the Risk Engine from recent klines.">Vol σ</th>
+                <th
+                  data-tooltip="Proprietary Risk Engine score (0.0-1.0) based on Midas metadata and market conditions.">
+                  Score</th>
+                <th data-tooltip="Value at Risk (99%). Expected max loss relative to equity over 24h.">VaR</th>
+                <th data-tooltip="Conditional VaR. Average loss in the worst 1% of scenarios (Expected Shortfall).">CVaR
+                </th>
+                <th data-tooltip="Probability of success estimated by Midas signal.">Midas Prob</th>
+                <th data-tooltip="Strategy Win-Rate over the last month (from Midas metadata).">WR</th>
+                <th data-tooltip="Risk-to-Reward ratio of the trade setup.">R:R</th>
+                <th data-tooltip="Counter-Trend flag. Indicates if trade opposes the current market trend.">CT</th>
+                <th data-tooltip="Final recommendation (Approve/Reduce/Reject) based on scoring and MC risk.">Rec</th>
+                <th data-tooltip="Kelly Fraction (% of bankroll to risk). Computed as: (P × R:R - (1 - P)) / R:R">Kelly
+                  %</th>
+                <th data-tooltip="Time taken for market data fetch and Titan V GPU Monte Carlo simulation.">Latency</th>
+              </tr>
+            </thead>
+            <tbody id="signals-tbody">
+              <tr>
+                <td colspan="18" class="loading">
+                  <div class="spinner"></div>Loading...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── Exit Quality Tracker (v0.18.0) ────────────────────── -->
+      <div class="table-card" style="margin-top:16px" id="exit-quality-card">
+        <h3 style="display:flex;align-items:center;gap:8px;">
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="var(--text-muted)" style="width:18px;height:18px;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+          </svg>
+          Exit Quality — Dumalka Decision Analytics
+          <span id="eq-maturity-badge" style="font-size:10px;color:var(--text-muted);margin-left:auto;"></span>
+        </h3>
+
+        <!-- Block A: Dumalka Acted -->
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Phase 1 — "Closed too early?" (post-close trajectory)</div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th data-tooltip="Close reason assigned by Dumalka.">Close Reason</th>
+                  <th data-tooltip="Number of analyzed positions.">Count</th>
+                  <th data-tooltip="Average PnL at exit.">Avg Exit PnL</th>
+                  <th data-tooltip="Average PnL 1 hour after the close. Positive = market kept going in your direction.">PnL +1h</th>
+                  <th data-tooltip="Average PnL 4 hours after the close.">PnL +4h</th>
+                  <th data-tooltip="Average PnL 24 hours after the close.">PnL +24h</th>
+                  <th data-tooltip="Percentage of positions where PnL 4h after close was positive (market kept going → premature exit).">Premature %</th>
+                  <th data-tooltip="SL/TP simulation: if held, would TP or SL have been hit first?">Would TP / SL / Neither</th>
+                  <th data-tooltip="Data collection started on this date.">Since</th>
+                </tr>
+              </thead>
+              <tbody id="eq-acted-tbody">
+                <tr><td colspan="9" style="text-align:center;color:var(--text-muted);font-size:12px;">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Phase 2: sl_breakeven effectiveness -->
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Phase 2 — sl_breakeven Effectiveness</div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th data-tooltip="Final close reason of positions that had sl_breakeven action.">Close Reason</th>
+                  <th data-tooltip="Number of positions that had BE move.">With BE</th>
+                  <th data-tooltip="Stopped near breakeven (PnL between -0.5% and +0.5%).">Stopped ≈BE</th>
+                  <th data-tooltip="Position was profitable after BE move.">Profitable</th>
+                  <th data-tooltip="Position lost money despite BE move.">Loss</th>
+                  <th data-tooltip="Average final PnL after BE move.">Avg PnL</th>
+                </tr>
+              </thead>
+              <tbody id="eq-be-tbody">
+                <tr><td colspan="6" style="text-align:center;color:var(--text-muted);font-size:12px;">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Block B: Dumalka Missed (sl_hit leaked profit) -->
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Phase 3 — "Why didn't Dumalka close?" (sl_hit leakage by zone)</div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th data-tooltip="Zone at peak PnL before SL was hit.">Zone</th>
+                  <th data-tooltip="Number of sl_hit positions that reached this zone.">Count</th>
+                  <th data-tooltip="Average peak PnL before reversal.">Avg Peak</th>
+                  <th data-tooltip="Average realized PnL (negative = loss).">Avg Realized</th>
+                  <th data-tooltip="Average leaked profit (peak - realized).">Avg Leaked</th>
+                  <th data-tooltip="Total leaked profit from this zone.">Total Leaked</th>
+                  <th data-tooltip="Average MC P(TP) probability at peak — was Monte Carlo correct?">MC p_tp</th>
+                  <th data-tooltip="Average time from peak to SL hit.">Hrs Peak→SL</th>
+                </tr>
+              </thead>
+              <tbody id="eq-missed-tbody">
+                <tr><td colspan="8" style="text-align:center;color:var(--text-muted);font-size:12px;">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Training insights -->
+        <div id="eq-insights" style="display:none;padding:8px 12px;border-radius:6px;background:rgba(255,165,0,0.08);border:1px solid rgba(255,165,0,0.15);margin-top:4px;">
+          <div style="font-size:11px;color:#ffa500;font-weight:600;margin-bottom:4px;">Training Insights</div>
+          <div id="eq-insights-list" style="font-size:12px;color:var(--text-muted);"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const API = '';  // relative to current host
+
+    function fmtPnl(v) {
+      if (v == null) return '—';
+      const n = parseFloat(v);
+      return (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+    }
+    function pnlColor(v) {
+      if (v == null) return 'var(--text-muted)';
+      return parseFloat(v) > 0 ? 'var(--accent-green)' : parseFloat(v) < 0 ? 'var(--accent-red)' : 'var(--accent-yellow)';
+    }
+
+    let currentLang = localStorage.getItem('risk_engine_lang') || 'en';
+
+    const i18n = {
+      en: {
+        header_title: "Risk <span>Engine</span> Dashboard",
+        btn_refresh: "↻ Refresh",
+        status_loading: "Loading...",
+        status_online: "● Online",
+        status_offline: "Offline",
+        status_err: "GPU Error",
+        stat_total: "Total Signals",
+        stat_total_sub: "processed by Risk Engine",
+        stat_approved: "Approved",
+        stat_approved_sub: "signals passed risk check",
+        stat_rejected: "Rejected",
+        stat_rejected_sub: "blocked by scoring + MC",
+        stat_latency: "Avg Latency",
+        stat_latency_sub: "GPU Monte Carlo + fetch (24h)",
+        stat_balance: "Bybit Balance",
+        stat_balance_sub: "equity | available",
+        chart_recs: "Recommendation Breakdown",
+        chart_score_outcome: "Score → Outcome",
+        chart_var: "VaR / CVaR by Symbol",
+        chart_gpu: "GPU & Engine",
+        gpu_loading: "Loading GPU info...",
+        table_title: `<svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="var(--text-muted)" style="width: 18px; height: 18px;"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg> Signal History — Recent Evaluations`,
+        empty_signals: "No signals yet. Send a webhook to /tv-webhook",
+        th_time: "Time",
+        th_symbol: "Symbol",
+        th_side: "Side",
+        th_price: "Price",
+        th_now: "Now",
+        th_close: "Close",
+        th_close_reason: "Why",
+        th_shadow: "Shadow",
+        th_vol: "Vol σ",
+        th_score: "Score",
+        th_var: "VaR",
+        th_cvar: "CVaR",
+        th_midas_prob: "Midas ~",
+        th_wr: "WR",
+        th_rr: "R:R",
+        th_ct: "CT",
+        th_rec: "Rec",
+        th_kelly: "Kelly %",
+        th_latency: "Latency",
+        tt_time: "Entry time of the signal evaluation.",
+        tt_symbol: "Trading pair (e.g. BTCUSDT).",
+        tt_side: "Trade direction: Long or Short.",
+        tt_price: "Asset price at the time of the signal.",
+        tt_now: "Current real-time price (Bybit WS). Color shows movement since signal.",
+        tt_close: "Actual position close price (from trade outcomes).",
+        tt_close_reason: "Close event from trade_outcomes (e.g. sl_hit, full_close, zone_full_exit).",
+        tt_shadow: "Shadow PnL: what would have happened following Midas (SL/TP kline simulation).",
+        tt_vol: "Annualized volatility calculated by the Risk Engine from recent klines.",
+        tt_score: "Proprietary Risk Engine score (0.0-1.0) based on Midas metadata and market conditions.",
+        tt_var: "Value at Risk (99%). Expected max loss relative to equity over 24h.",
+        tt_cvar: "Conditional VaR. Average loss in the worst 1% of scenarios (Expected Shortfall).",
+        tt_midas_prob: "Probability of success estimated by Midas signal.",
+        tt_wr: "Strategy Win-Rate over the last month (from Midas metadata).",
+        tt_rr: "Risk-to-Reward ratio of the trade setup.",
+        tt_ct: "Counter-Trend flag. Indicates if trade opposes the current market trend.",
+        tt_rec: "Final recommendation (Approve/Reduce/Reject) based on scoring and MC risk.",
+        tt_kelly: "Kelly Fraction (% of bankroll). Computed as: (P × R:R - P_loss) / R:R",
+        tt_latency: "Time taken for market data fetch and Titan V GPU Monte Carlo simulation.",
+        badge_long: "▲ LONG",
+        badge_short: "▼ SHORT",
+        with_trend: "With-Trend",
+        counter_trend: "Counter-Trend",
+        avg_score: "Avg Score",
+        avg_var: "Avg VaR (%)",
+        avg_cvar: "Avg CVaR (%)",
+        gpu_load: "GPU Load",
+        gpu_mem: "GPU Memory",
+        nav_about: "About Project",
+        nav_analytics: "Analytics"
+      },
+      ru: {
+        header_title: "Risk <span>Engine</span> — Панель управления",
+        nav_about: "О проекте",
+        nav_analytics: "Аналитика",
+        btn_refresh: "↻ Обновить",
+        status_loading: "Загрузка...",
+        status_online: "● В сети",
+        status_offline: "Не в сети",
+        status_err: "Ошибка GPU",
+        stat_total: "Всего сигналов",
+        stat_total_sub: "обработано Risk Engine",
+        stat_approved: "Одобрено",
+        stat_approved_sub: "прошли проверку рисков",
+        stat_rejected: "Отклонено",
+        stat_rejected_sub: "заблокировано скорингом + MC",
+        stat_latency: "Ср. задержка",
+        stat_latency_sub: "GPU Monte Carlo + данные (24ч)",
+        stat_balance: "Баланс Bybit",
+        stat_balance_sub: "эквити | доступно",
+        chart_recs: "Распределение рекомендаций",
+        chart_score_outcome: "Скор → Результат",
+        chart_var: "VaR / CVaR по тикерам",
+        chart_gpu: "GPU и Движок",
+        gpu_loading: "Загрузка данных GPU...",
+        table_title: `<svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="var(--text-muted)" style="width: 18px; height: 18px;"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg> История сигналов — Последние оценки`,
+        empty_signals: "Сигналов пока нет. Отправьте вебхук на /tv-webhook",
+        th_time: "Время",
+        th_symbol: "Тикер",
+        th_side: "Сторона",
+        th_price: "Цена",
+        th_now: "Сейчас",
+        th_close: "Закрыт",
+        th_close_reason: "Почему",
+        th_shadow: "Тень",
+        th_vol: "Вол-сть",
+        th_score: "Рейтинг",
+        th_var: "VaR",
+        th_cvar: "CVaR",
+        th_midas_prob: "Midas ~",
+        th_wr: "WR",
+        th_rr: "R:R",
+        th_ct: "CT",
+        th_rec: "Рек.",
+        th_kelly: "Kelly %",
+        th_latency: "Задержка",
+        tt_time: "Время оценки сигнала.",
+        tt_symbol: "Торговая пара (например, BTCUSDT).",
+        tt_side: "Направление сделки: Long или Short.",
+        tt_price: "Цена актива на момент сигнала.",
+        tt_now: "Текущая цена в реальном времени (Bybit WS). Цвет показывает движение от сигнала.",
+        tt_close: "Реальная цена закрытия позиции (из trade outcomes).",
+        tt_close_reason: "Событие закрытия из trade_outcomes (sl_hit, full_close и т.д.).",
+        tt_shadow: "Shadow PnL: что было бы, следуя Midas (симуляция SL/TP на реальных свечах).",
+        tt_vol: "Годовая волатильность, рассчитанная Risk Engine.",
+        tt_score: "Собственный рейтинг Risk Engine (0.0-1.0) на основе метаданных Midas.",
+        tt_var: "Value at Risk (99%). Ожидаемый макс. убыток за 24ч.",
+        tt_cvar: "Conditional VaR. Средний убыток в худших 1% сценариев.",
+        tt_midas_prob: "Вероятность успеха по оценке Midas.",
+        tt_wr: "Процент прибыльных сделок стратегии за месяц.",
+        tt_rr: "Соотношение риск/прибыль.",
+        tt_ct: "Флаг контртренда. Сделка против текущего тренда.",
+        tt_rec: "Итоговая рекомендация (Одобрить/Снизить/Отклонить).",
+        tt_kelly: "Критерий Келли (% депозита). Формула: (Вероятность × R:R - Вер.Убытка) / R:R",
+        tt_latency: "Время выполнения расчетов на GPU Titan V.",
+        badge_long: "▲ LONG",
+        badge_short: "▼ SHORT",
+        with_trend: "По тренду",
+        counter_trend: "Контртренд",
+        avg_score: "Ср. рейтинг",
+        avg_var: "Ср. VaR (%)",
+        avg_cvar: "Ср. CVaR (%)",
+        gpu_load: "Загрузка GPU",
+        gpu_mem: "Память GPU"
+      }
+    };
+
+    /** Signal History column keys — single source for thead, sort-arrow highlight, and row cell order. */
+    const SIGNAL_TABLE_COLS = ['time', 'symbol', 'side', 'rec', 'score', 'price', 'close', 'close_reason', 'now', 'shadow', 'vol', 'var', 'cvar', 'midas_prob', 'wr', 'rr', 'kelly', 'latency'];
+
+    function setLanguage(lang) {
+      currentLang = lang;
+      localStorage.setItem('risk_engine_lang', lang);
+
+      // Update switcher buttons
+      document.querySelectorAll('.lang-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent.toLowerCase() === lang);
+      });
+
+      // Update static text via data-i18n
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (i18n[lang][key]) el.innerHTML = i18n[lang][key];
+      });
+
+      // Update table headers specifically
+      const thead = document.querySelector('#signals-thead');
+      thead.innerHTML = SIGNAL_TABLE_COLS.map(c => `<th onclick="sortSignals('${c}')" class="${c === sigSortCol ? (sigSortAsc ? 'sort-asc' : 'sort-desc') : ''}" data-tooltip="${i18n[lang]['tt_' + c]}">${i18n[lang]['th_' + c]}</th>`).join('');
+
+      // Refresh data
+      refreshAll();
+    }
+
+    // ── Sorting state ───────────────────────────────────
+    let signalsData = [];
+    let sigSortCol = 'time';
+    let sigSortAsc = false;
+    let wsPrices = {};
+
+    let positionsData = [];
+    let posSortCol = 'opened_at';
+    let posSortAsc = false;
+
+    function sortSignals(col) {
+      if (sigSortCol === col) sigSortAsc = !sigSortAsc;
+      else { sigSortCol = col; sigSortAsc = false; }
+      
+      const thead = document.querySelector('#signals-thead');
+      thead.querySelectorAll('th').forEach(th => th.className = '');
+      const idx = SIGNAL_TABLE_COLS.indexOf(col);
+      if (idx >= 0) thead.querySelectorAll('th')[idx].className = sigSortAsc ? 'sort-asc' : 'sort-desc';
+      
+      renderSignals();
+    }
+
+    function sortPositions(col) {
+      if (posSortCol === col) posSortAsc = !posSortAsc;
+      else { posSortCol = col; posSortAsc = false; }
+      
+      const thead = document.querySelector('#positions-thead');
+      thead.querySelectorAll('th').forEach(th => th.className = '');
+      const idx = ['opened_at', 'symbol', 'side', 'entry_price', 'current_price', 'close_price', 'current_pnl_pct', 'max_pnl_pct', 'tp_progress_pct', 'current_sl', 'initial_signal_score', 'status'].indexOf(col);
+      if(idx >= 0) thead.querySelectorAll('th')[idx].className = posSortAsc ? 'sort-asc' : 'sort-desc';
+
+      renderPositions();
+    }
+
+    // ── Chart defaults ──────────────────────────────────
+    Chart.defaults.color = '#94a3b8';
+    Chart.defaults.borderColor = '#1e293b';
+    Chart.defaults.font.family = "'Inter', sans-serif";
+
+    let chartRecs, chartScoreOutcome, chartVar;
+
+    // v0.6.0: Sector classification (shared between charts and table)
+    const majorAlts = new Set(['SOLUSDT','AVAXUSDT','LINKUSDT','DOTUSDT','ADAUSDT','MATICUSDT','ATOMUSDT','NEARUSDT','APTUSDT','SUIUSDT','ARBUSDT','OPUSDT','XRPUSDT','DOGEUSDT','SHIBUSDT','LTCUSDT','UNIUSDT','AAVEUSDT','INJUSDT','TONUSDT']);
+
+    // ── Fetch helpers ───────────────────────────────────
+    async function fetchJSON(url) {
+      const r = await fetch(url);
+      const ct = r.headers.get('content-type') || '';
+      if (!r.ok) {
+        const text = await r.text();
+        throw new Error(`HTTP ${r.status}: ${text.slice(0, 120)}`);
+      }
+      if (!ct.includes('application/json')) {
+        const text = await r.text();
+        throw new Error(`Expected JSON, got: ${text.slice(0, 120)}`);
+      }
+      return r.json();
+    }
+
+    // ── GPU Health ──────────────────────────────────────
+    async function loadHealth() {
+      try {
+        const h = await fetchJSON(API + '/health');
+        const badge = document.getElementById('gpu-badge');
+        const txt = document.getElementById('gpu-status-text');
+
+        // Always update badge based on status
+        if (h.status === 'healthy') {
+          badge.className = 'status-badge healthy';
+        } else {
+          badge.className = 'status-badge unhealthy';
+        }
+
+        // Always render GPU info if GPU field exists
+        if (h.gpu) {
+          document.getElementById('gpu-header-name').textContent = 'GPU: ' + h.gpu;
+          txt.textContent = h.gpu + ' — v' + h.version;
+
+          const usedMB = h.memory_total_mb - h.memory_free_mb;
+          const memPct = ((usedMB / h.memory_total_mb) * 100).toFixed(0);
+          const t = i18n[currentLang];
+
+          // Show task health with color coding
+          const taskHtml = h.background_tasks ? Object.entries(h.background_tasks).map(([name, status]) => {
+            const isOk = status === 'healthy';
+            const color = isOk ? 'var(--accent-green)' : status.includes('not_started') ? 'var(--accent-yellow)' : 'var(--accent-red)';
+            const icon = isOk ? '●' : status.includes('not_started') ? '◐' : '✗';
+            return `<div class="gpu-row"><span class="k">${name}</span><span class="v" style="color:${color}">${icon} ${status}</span></div>`;
+          }).join('') : '';
+
+          document.getElementById('gpu-info').innerHTML = `
+            <div class="gpu-row"><span class="k">${t.gpu_load}</span><span class="v">${h.load_current}% / ${h.load_avg}% (1h avg) / ${h.load_max}% (1h peak)</span></div>
+            <div class="mem-bar"><div class="mem-bar-fill" style="width:${Math.max(h.load_current, 3)}%;background:${h.load_current > 50 ? 'var(--gradient-4)' : 'var(--gradient-1)'}"></div></div>
+            
+            <div class="gpu-row" style="margin-top:8px"><span class="k">${t.gpu_mem}</span><span class="v">${usedMB} / ${h.memory_total_mb} MB (${memPct}%)</span></div>
+            <div class="mem-bar"><div class="mem-bar-fill" style="width:${memPct}%"></div></div>
+            
+            <div style="margin-top:12px; display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <div class="gpu-row"><span class="k">${currentLang === 'ru' ? 'Версия' : 'Version'}</span><span class="v">${h.version}</span></div>
+              <div class="gpu-row"><span class="k">${currentLang === 'ru' ? 'Точность' : 'Precision'}</span><span class="v">FP64</span></div>
+              <div class="gpu-row"><span class="k">${currentLang === 'ru' ? 'Сценарии' : 'Paths'}</span><span class="v">100k</span></div>
+              <div class="gpu-row"><span class="k">Status</span><span class="v" style="color:${h.status === 'healthy' ? 'var(--accent-green)' : 'var(--accent-yellow)'}">● ${h.status}</span></div>
+              <div class="gpu-row"><span class="k">${currentLang === 'ru' ? 'Семплов' : 'Samples'}</span><span class="v">${h.samples_count || 0}/3600</span></div>
+              <div class="gpu-row"><span class="k">${currentLang === 'ru' ? 'MC запросов' : 'MC Requests'}</span><span class="v" style="color:var(--accent-cyan)">${h.request_peaks || 0}</span></div>
+              <div class="gpu-row"><span class="k">Uptime</span><span class="v" style="color:var(--accent-green)">${h.uptime_hours != null ? (() => { const d = Math.floor(h.uptime_hours / 24), hr = Math.floor(h.uptime_hours % 24), m = Math.round((h.uptime_hours % 1) * 60); return d > 0 ? d + 'd ' + hr + 'h' : hr + 'h ' + m + 'm'; })() : '—'}</span></div>
+              <div class="gpu-row"><span class="k">${currentLang === 'ru' ? 'Загрузка (avg)' : 'Load (avg)'}</span><span class="v">${h.load_avg_active != null ? h.load_avg_active + '%' : '—'}</span></div>
+            </div>
+            ${taskHtml ? `<div style="margin-top:12px; border-top: 1px solid var(--border); padding-top:8px;">${taskHtml}</div>` : ''}
+          `;
+        } else {
+          txt.textContent = i18n[currentLang].status_err;
+        }
+
+        // v0.10.1: Update Sentinel widget (always, regardless of health status)
+        if (h.sentinel) {
+          const s = h.sentinel;
+          const priceEl = document.getElementById('sentinel-price');
+          const subEl = document.getElementById('sentinel-sub');
+          if (s.active && s.last_price) {
+            priceEl.textContent = '$' + s.last_price.toFixed(0);
+            priceEl.style.color = 'var(--accent-cyan)';
+            const emergColor = s.emergencies > 0 ? 'var(--accent-red)' : 'var(--accent-green)';
+            subEl.innerHTML = 
+              `<span style="color:var(--accent-green)">● Live</span> · ` +
+              `msgs: ${(s.messages_received/1000).toFixed(1)}k · ` +
+              `<span style="color:${emergColor}">alerts: ${s.alerts} · emerg: ${s.emergencies}</span>`;
+          } else if (s.active) {
+            priceEl.textContent = '...';
+            subEl.textContent = 'connecting to Binance WS...';
+          } else {
+            priceEl.textContent = 'OFF';
+            priceEl.style.color = 'var(--text-muted)';
+            subEl.textContent = s.reason || 'not started';
+          }
+        }
+        // v0.15.1: Update Bybit WS Price Feed widget
+        if (h.bybit_ws) {
+          const ws = h.bybit_ws;
+          const wsStatus = document.getElementById('ws-feed-status');
+          const wsSub = document.getElementById('ws-feed-sub');
+          if (ws.active && ws.messages_received > 0) {
+            wsStatus.textContent = `${ws.price_updates_per_sec}/s`;
+            wsStatus.style.color = 'var(--accent-cyan)';
+            const connMin = Math.round(ws.connected_for_sec / 60);
+            const lastAgo = ws.last_message_ago_sec !== null ? ws.last_message_ago_sec.toFixed(1) : '—';
+            wsSub.innerHTML = 
+              `<span style="color:var(--accent-green)">● Live</span> · ` +
+              `${ws.subscribed_symbols} symbols · ` +
+              `${(ws.messages_received/1000).toFixed(1)}k msgs · ` +
+              `${connMin}m uptime`;
+            // Pulse animation if data flowing
+            document.getElementById('widget-bybit-ws').style.borderColor = 
+              ws.price_updates_per_sec > 0 ? 'rgba(6,182,212,0.4)' : 'rgba(6,182,212,0.2)';
+          } else if (ws.active) {
+            wsStatus.textContent = '...';
+            wsStatus.style.color = 'var(--accent-yellow)';
+            wsSub.textContent = 'connecting to Bybit WS...';
+          } else {
+            wsStatus.textContent = 'OFF';
+            wsStatus.style.color = 'var(--text-muted)';
+            wsSub.textContent = ws.reason || 'not started';
+          }
+        }
+
+      } catch (e) {
+        document.getElementById('gpu-status-text').textContent = i18n[currentLang].status_offline;
+        document.getElementById('gpu-badge').className = 'status-badge unhealthy';
+      }
+    }
+
+    // ── Analysis ────────────────────────────────────────
+    async function loadAnalysis() {
+      try {
+        const a = await fetchJSON(API + '/analysis');
+
+        // Top stats
+        document.getElementById('stat-total').textContent = a.total_signals;
+        document.getElementById('stat-latency').textContent = a.avg_latency_ms ? a.avg_latency_ms.toFixed(0) + 'ms' : '—';
+
+        // Parse recs
+        const recs = {};
+        (a.by_recommendation || []).forEach(r => { recs[r.re_recommendation] = r; });
+        const appCnt = recs.approve?.cnt || 0;
+        const rejCnt = recs.reject?.cnt || 0;
+        const redCnt = recs.reduce?.cnt || 0;
+        document.getElementById('stat-approved').textContent = appCnt;
+        document.getElementById('stat-approved-sub').textContent = `avg score: ${(recs.approve?.avg_score || 0).toFixed(3)}`;
+        document.getElementById('stat-rejected').textContent = rejCnt + redCnt;
+        document.getElementById('stat-rejected-sub').textContent = `${rejCnt} rejected, ${redCnt} reduced`;
+
+        // Recommendation doughnut
+        const recCtx = document.getElementById('chart-recs').getContext('2d');
+        if (chartRecs) chartRecs.destroy();
+        chartRecs = new Chart(recCtx, {
+          type: 'doughnut',
+          data: {
+            labels: currentLang === 'ru' ? ['Одобрить', 'Снизить', 'Отклонить'] : ['Approve', 'Reduce', 'Reject'],
+            datasets: [{
+              data: [appCnt, redCnt, rejCnt],
+              backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
+              borderWidth: 0,
+              hoverOffset: 8,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '65%',
+            plugins: {
+              legend: { position: 'bottom', labels: { padding: 16, usePointStyle: true, pointStyleWidth: 10 } }
+            }
+          }
+        });
+
+        // Score → Outcome scatter chart
+        try {
+          const soResp = await fetch('/api/score-outcome');
+          const soData = await soResp.json();
+          const pts = (soData.points || []).map(p => ({
+            x: p.score, y: p.pnl,
+            rec: p.rec, symbol: p.symbol
+          }));
+          const soCtx = document.getElementById('chart-score-outcome').getContext('2d');
+          if (chartScoreOutcome) chartScoreOutcome.destroy();
+          chartScoreOutcome = new Chart(soCtx, {
+            type: 'scatter',
+            data: {
+              datasets: [{
+                label: 'Score → PnL',
+                data: pts,
+                pointRadius: 5,
+                pointHoverRadius: 7,
+                pointBackgroundColor: pts.map(p => p.y >= 0 ? 'rgba(16,185,129,0.7)' : 'rgba(239,68,68,0.7)'),
+                pointBorderColor: pts.map(p => p.y >= 0 ? '#10b981' : '#ef4444'),
+                pointBorderWidth: 1,
+              }]
+            },
+            options: {
+              responsive: true, maintainAspectRatio: false,
+              scales: {
+                x: { title: { display: true, text: 'RE Score', color: '#8892b0', font: { size: 11 } },
+                     min: 0, max: 1, grid: { color: '#1e2a4515' },
+                     ticks: { color: '#8892b0', stepSize: 0.2 } },
+                y: { title: { display: true, text: 'PnL %', color: '#8892b0', font: { size: 11 } },
+                     grid: { color: '#1e2a4530' },
+                     ticks: { color: '#8892b0', callback: v => v.toFixed(0) + '%' } }
+              },
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: ctx => `${ctx.raw.symbol}: score ${ctx.raw.x.toFixed(2)}, PnL ${ctx.raw.y > 0 ? '+' : ''}${ctx.raw.y.toFixed(2)}%`
+                  }
+                }
+              }
+            }
+          });
+        } catch(e) { console.warn('score-outcome:', e); }
+
+        // VaR/CVaR by symbol
+        const syms = a.by_symbol || [];
+        const varCtx = document.getElementById('chart-var').getContext('2d');
+        if (chartVar) chartVar.destroy();
+        chartVar = new Chart(varCtx, {
+          type: 'bar',
+          data: {
+            labels: syms.map(s => s.symbol),
+            datasets: [
+              {
+                label: i18n[currentLang].avg_var,
+                data: syms.map(s => ((s.avg_var || 0) * 100).toFixed(2)),
+                backgroundColor: 'rgba(59,130,246,0.7)',
+                borderRadius: 6,
+                barPercentage: 0.4,
+              },
+              {
+                label: i18n[currentLang].avg_cvar,
+                data: syms.map(s => ((s.avg_cvar || 0) * 100).toFixed(2)),
+                backgroundColor: 'rgba(239,68,68,0.6)',
+                borderRadius: 6,
+                barPercentage: 0.4,
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true } } },
+            scales: {
+              y: {
+                beginAtZero: true, grid: { color: 'rgba(30,41,59,0.5)' },
+                ticks: { callback: v => v + '%' }
+              },
+              x: { grid: { display: false } }
+            }
+          }
+        });
+
+      } catch (e) {
+        console.error('Analysis load failed:', e);
+      }
+    }
+
+    // ── Signals Table ───────────────────────────────────
+    async function loadSignals() {
+      const tbody = document.getElementById('signals-tbody');
+      try {
+        const [signals, wsData] = await Promise.all([
+          fetchJSON(API + '/signals?limit=30'),
+          fetchJSON(API + '/api/ws-prices').catch(() => null)
+        ]);
+        if (wsData && wsData.prices) {
+          wsPrices = {};
+          for (const [sym, info] of Object.entries(wsData.prices)) {
+            wsPrices[sym] = info.price != null ? info.price : (typeof info === 'number' ? info : null);
+          }
+        }
+        signalsData = Array.isArray(signals) ? signals : [];
+        if (!signalsData.length && !Array.isArray(signals)) {
+          tbody.innerHTML = `<tr><td colspan="18" style="text-align:center;color:var(--accent-red);padding:32px">Invalid /signals response (expected array)</td></tr>`;
+          return;
+        }
+        renderSignals();
+      } catch (e) {
+        console.error('Signals load failed:', e);
+        signalsData = [];
+        const msg = (e && e.message) ? String(e.message) : String(e);
+        tbody.innerHTML = `<tr><td colspan="18" style="text-align:center;color:var(--accent-red);padding:32px">${currentLang === 'ru' ? 'Ошибка загрузки сигналов' : 'Failed to load signals'}: ${msg.replace(/</g, '&lt;')}</td></tr>`;
+      }
+    }
+
+    function renderSignals() {
+      const tbody = document.getElementById('signals-tbody');
+      if (!signalsData.length) {
+        tbody.innerHTML = `<tr><td colspan="18" style="text-align:center;color:var(--text-muted);padding:32px">${i18n[currentLang].empty_signals}</td></tr>`;
+        return;
+      }
+
+      const getSigVal = (s, col) => {
+        switch(col) {
+          case 'time': return s.created_at || '';
+          case 'symbol': return s.symbol || '';
+          case 'side': return s.side || '';
+          case 'price': return s.price_at_signal || 0;
+          case 'now': return wsPrices[(s.symbol || '')] || 0;
+          case 'close': return s.close_price || 0;
+          case 'close_reason': return s.close_reason || '';
+          case 'shadow': return s.shadow_pnl_4h != null ? s.shadow_pnl_4h : -999;
+          case 'vol': return s.re_annual_vol != null ? s.re_annual_vol : (s.volatility_used || 0);
+          case 'score': return s.re_signal_score || 0;
+          case 'var': return s.var || 0;
+          case 'cvar': return s.cvar || 0;
+          case 'midas_prob': return s.midas_probability || 0;
+          case 'wr': return s.midas_win_rate || 0;
+          case 'rr': return s.risk_reward || 0;
+          case 'rec': return s.re_recommendation || '';
+          case 'kelly': 
+             let p = s.midas_probability != null ? s.midas_probability/100 : 0;
+             let rr = s.risk_reward || 0;
+             if(!p || !rr) return -999;
+             return ((p * rr) - (1 - p)) / rr;
+          case 'latency': return s.latency_ms || 0;
+        }
+        return 0;
+      };
+
+      const sorted = [...signalsData].sort((a, b) => {
+        let va = getSigVal(a, sigSortCol);
+        let vb = getSigVal(b, sigSortCol);
+        if (typeof va === 'string' && typeof vb === 'string') {
+          return sigSortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+        }
+        return sigSortAsc ? (va - vb) : (vb - va);
+      });
+
+      tbody.innerHTML = sorted.map(s => {
+        const time = s.created_at ? new Date(s.created_at).toLocaleString('en-GB', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+        const side = (s.side || '').toLowerCase();
+        const sideClass = (side === 'long' || side === 'buy') ? 'long' : 'short';
+        const sideLabel = sideClass === 'long' ? i18n[currentLang].badge_long : i18n[currentLang].badge_short;
+        const rec = s.re_recommendation || '—';
+        const recClass = rec;
+        const recTooltips = {
+          approve: currentLang === 'ru' ? 'Score ≥ 0.60 и VaR в норме. Сигнал одобрен.' : 'Score ≥ 0.60 and VaR within limits. Signal approved.',
+          reduce: currentLang === 'ru' ? 'Score 0.45–0.59 или VaR > 1.5%. Рекомендуется уменьшить размер.' : 'Score 0.45–0.59 or VaR > limits. Reduce position size recommended.',
+          reject: currentLang === 'ru' ? 'Score < 0.45 или опасная комбинация факторов. Не входить.' : 'Score < 0.45 or dangerous factor combination. Do not enter.'
+        };
+        const recTooltip = recTooltips[rec] || '';
+        const score = s.re_signal_score != null ? s.re_signal_score.toFixed(3) : '—';
+        const scoreColor = s.re_signal_score >= 0.60 ? 'var(--accent-green)' : s.re_signal_score >= 0.45 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+        const scorePct = Math.min((s.re_signal_score || 0) * 100, 100);
+        const barColor = s.re_signal_score >= 0.60 ? 'var(--accent-green)' : s.re_signal_score >= 0.45 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+        const varVal = s.var != null ? (s.var * 100).toFixed(2) + '%' : '—';
+        const cvarVal = s.cvar != null ? (s.cvar * 100).toFixed(2) + '%' : '—';
+        const prob = s.midas_probability != null ? Math.round(s.midas_probability * 10) / 10 + '%' : '—';
+        const wr = s.midas_win_rate != null ? Math.round(s.midas_win_rate * 10) / 10 + '%' : '—';
+        const rr = s.risk_reward != null ? '1:' + (Math.round(s.risk_reward * 10) / 10) : '—';
+        const price = s.price_at_signal != null ? s.price_at_signal.toFixed(2) : '—';
+        const vol = s.re_annual_vol != null ? s.re_annual_vol.toFixed(2) : (s.volatility_used != null ? s.volatility_used.toFixed(2) : '—');
+        const lat = s.latency_ms != null ? s.latency_ms.toFixed(0) + 'ms' : '—';
+
+        // Now (current price from WS)
+        const nowPrice = wsPrices[(s.symbol || '')];
+        let nowStr = '—', nowColor = 'var(--text-muted)', nowDelta = '';
+        if (nowPrice != null && s.price_at_signal > 0) {
+          const isLong = (s.side || '').toLowerCase() === 'long' || (s.side || '').toLowerCase() === 'buy';
+          const deltaPct = ((nowPrice - s.price_at_signal) / s.price_at_signal) * 100;
+          const favorable = isLong ? deltaPct > 0 : deltaPct < 0;
+          nowColor = Math.abs(deltaPct) < 0.1 ? 'var(--text-secondary)' : favorable ? 'var(--accent-green)' : 'var(--accent-red)';
+          nowStr = nowPrice >= 1 ? nowPrice.toFixed(2) : nowPrice.toPrecision(4);
+          nowDelta = `<span style="font-size:10px;opacity:0.7;margin-left:2px">${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(1)}%</span>`;
+        } else if (nowPrice != null) {
+          nowStr = nowPrice >= 1 ? nowPrice.toFixed(2) : nowPrice.toPrecision(4);
+        }
+
+        // Shadow PnL
+        let shadowStr = '—', shadowColor = 'var(--text-muted)', shadowBadge = '';
+        if (s.shadow_pnl_4h != null) {
+          const spnl = s.shadow_pnl_4h;
+          shadowStr = (spnl >= 0 ? '+' : '') + spnl.toFixed(2) + '%';
+          shadowColor = spnl > 0.1 ? 'var(--accent-green)' : spnl < -0.1 ? 'var(--accent-red)' : 'var(--text-secondary)';
+        }
+        if (s.shadow_outcome === 'tp_hit') {
+          shadowBadge = '<span class="badge approve" style="font-size:8px;padding:1px 4px;margin-left:3px;vertical-align:middle">TP</span>';
+        } else if (s.shadow_outcome === 'sl_hit') {
+          shadowBadge = '<span class="badge reject" style="font-size:8px;padding:1px 4px;margin-left:3px;vertical-align:middle">SL</span>';
+        } else if (s.shadow_outcome === 'open') {
+          shadowBadge = '<span style="font-size:9px;color:var(--text-muted);margin-left:3px" title="Still open — not yet resolved">···</span>';
+        }
+
+        const p = s.midas_probability != null ? s.midas_probability / 100 : null;
+        const rrNum = s.risk_reward != null ? s.risk_reward : null;
+        let kellyStr = '—';
+        let kellyColor = 'var(--text-muted)';
+        if (p !== null && rrNum !== null && rrNum > 0) {
+          const expectVal = (p * rrNum) - (1 - p);
+          const kellyFra = expectVal / rrNum;
+          const kellyPct = (kellyFra * 100).toFixed(1);
+          kellyStr = (parseFloat(kellyPct) > 0 ? '+' : '') + String(kellyPct) + '%';
+          if (kellyFra > 0.1) kellyColor = 'var(--accent-green)';
+          else if (kellyFra > 0) kellyColor = 'var(--accent-yellow)';
+          else kellyColor = 'var(--accent-red)';
+        }
+
+        // Close price (from trade_outcomes)
+        let closeStr = '—', closeColor = 'var(--text-muted)';
+        if (s.close_price != null && s.close_price > 0) {
+          closeStr = s.close_price >= 1 ? s.close_price.toFixed(2) : s.close_price.toPrecision(4);
+          if (s.price_at_signal > 0) {
+            const isLong = (s.side || '').toLowerCase() === 'long' || (s.side || '').toLowerCase() === 'buy';
+            const closeDelta = ((s.close_price - s.price_at_signal) / s.price_at_signal) * 100;
+            const closeFav = isLong ? closeDelta > 0 : closeDelta < 0;
+            closeColor = Math.abs(closeDelta) < 0.1 ? 'var(--text-secondary)' : closeFav ? 'var(--accent-green)' : 'var(--accent-red)';
+            closeStr += `<span style="font-size:10px;opacity:0.7;margin-left:2px">${closeDelta >= 0 ? '+' : ''}${closeDelta.toFixed(1)}%</span>`;
+          }
+        }
+
+        const crRaw = s.close_reason;
+        const hasCr = crRaw != null && String(crRaw).length > 0;
+        const crHtml = hasCr
+          ? String(crRaw).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;')
+          : '—';
+        const crTitle = hasCr
+          ? String(crRaw).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
+          : '';
+
+        // Score component popup
+        const comp = s.score_components || {};
+        const compRows = [
+          ['WR', comp.wr, '28%'], ['Prob', comp.prob, '23%'], ['R:R', comp.rr, '18%'],
+          ['Trend', comp.trend_align, '15%'], ['Vol', comp.vol_ok, '8%'], ['Liq', comp.liquidity_ok, '8%']
+        ].map(([name, val, w]) => {
+          const v = val != null ? val.toFixed(3) : '—';
+          const pct = val != null ? Math.min(val * 100, 100) : 0;
+          const color = val >= 0.7 ? 'var(--accent-green)' : val >= 0.4 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+          return `<div class="comp-row"><span class="comp-name">${name} (${w})</span><span class="comp-val" style="color:${color}">${v}</span><div class="comp-bar"><div class="comp-bar-fill" style="width:${pct}%;background:${color}"></div></div></div>`;
+        }).join('');
+
+        return `<tr>
+      <td>${time}</td>
+      <td style="font-weight:600">${s.symbol}</td>
+      <td><span class="badge ${sideClass}">${sideLabel}</span></td>
+      <td><span class="badge ${recClass}" data-tooltip="${recTooltip}">${rec.toUpperCase()}</span></td>
+      <td class="score-cell">
+        <div class="score-bar-wrap">
+          <span style="color:${scoreColor};font-weight:600">${score}</span>
+          <div class="score-bar"><div class="score-bar-fill" style="width:${scorePct}%;background:${barColor}"></div></div>
+        </div>
+        <div class="score-popup">
+          <div style="font-size:11px;font-weight:600;margin-bottom:6px;color:var(--text-primary)">${currentLang=== 'ru'?'Компоненты рейтинга':'Score Components'} (v0.9.3)</div>
+          ${compRows}
+        </div>
+      </td>
+      <td>${price}</td>
+      <td style="color:${closeColor};font-weight:500;white-space:nowrap">${closeStr}</td>
+      <td style="font-size:11px;color:var(--text-secondary);white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis" ${hasCr ? `title="${crTitle}"` : ''}>${crHtml}</td>
+      <td style="color:${nowColor};font-weight:500;white-space:nowrap">${nowStr}${nowDelta}</td>
+      <td style="color:${shadowColor};font-weight:600;white-space:nowrap">${shadowStr}${shadowBadge}</td>
+      <td>${vol}</td>
+      <td>${varVal}</td>
+      <td>${cvarVal}</td>
+      <td>${prob}</td>
+      <td>${wr}</td>
+      <td>${rr}</td>
+      <td style="color:${kellyColor};font-weight:600;font-size:12px">${kellyStr}</td>
+      <td>${lat}</td>
+    </tr>`;
+      }).join('');
+    }
+
+    // ── Open Positions ──────────────────────────────────
+    async function loadPositions() {
+      try {
+        positionsData = await fetchJSON(API + '/open-positions');
+        renderPositions();
+      } catch (e) {
+        console.error('Positions load failed:', e);
+      }
+    }
+
+    function renderPositions() {
+      const tbody = document.getElementById('positions-tbody');
+      if (!positionsData.length) {
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text-muted);padding:32px">No tracked positions yet</td></tr>';
+        return;
+      }
+
+      const formatPrice = (p) => {
+        if (p == null) return '—';
+        if (p < 0.1) return p.toFixed(5);
+        if (p < 1) return p.toFixed(4);
+        if (p < 10) return p.toFixed(3);
+        if (p > 1000) return p.toFixed(1);
+        return p.toFixed(2);
+      };
+
+      const getPosVal = (p, col) => {
+        switch(col) {
+          case 'symbol': return p.symbol || '';
+          case 'side': return p.side || '';
+          case 'entry_price': return p.entry_price || 0;
+          case 'current_price': return p.status === 'open' ? (p.current_price || 0) : 0;
+          case 'close_price': return p.status === 'closed' ? (p.current_price || 0) : 0;
+          case 'current_pnl_pct': return p.current_pnl_pct || 0;
+          case 'max_pnl_pct': return p.max_pnl_pct || 0;
+          case 'tp_progress_pct': return p.tp_progress_pct || 0;
+          case 'current_sl': return p.current_sl || 0;
+          case 'initial_signal_score': return p.initial_signal_score || 0;
+          case 'status': return p.status || '';
+          case 'opened_at': return p.opened_at || '';
+        }
+        return 0;
+      };
+
+      const sorted = [...positionsData].sort((a, b) => {
+        let va = getPosVal(a, posSortCol);
+        let vb = getPosVal(b, posSortCol);
+        if (typeof va === 'string' && typeof vb === 'string') {
+          return posSortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+        }
+        return posSortAsc ? (va - vb) : (vb - va);
+      });
+
+      tbody.innerHTML = sorted.map(p => {
+        const side = (p.side || '').toLowerCase();
+        const sideClass = (side === 'long' || side === 'buy') ? 'long' : 'short';
+        const sideLabel = sideClass === 'long' ? '▲ LONG' : '▼ SHORT';
+        
+        let pnlUsdtStr = '—';
+        let pnlPctStr = '—';
+        const pnlPctNum = p.current_pnl_pct || 0;
+        if (p.current_pnl_pct != null) {
+          pnlPctStr = (pnlPctNum > 0 ? '+' : '') + pnlPctNum.toFixed(2) + '%';
+          if (p.size != null && p.entry_price != null) {
+            let usdtVal;
+            if (p.status === 'closed' && p.current_price != null) {
+              // Exact USDT PnL from entry/close prices
+              const side = (p.side || '').toLowerCase();
+              if (side === 'long' || side === 'buy') {
+                usdtVal = (p.current_price - p.entry_price) * Math.abs(p.size);
+              } else {
+                usdtVal = (p.entry_price - p.current_price) * Math.abs(p.size);
+              }
+            } else {
+              // Open position: approximate from PnL %
+              usdtVal = (pnlPctNum / 100) * (p.entry_price * p.size);
+            }
+            pnlUsdtStr = (usdtVal > 0 ? '+' : '') + usdtVal.toFixed(2) + ' USDT';
+          }
+        }
+        const pnlColor = pnlPctNum > 0 ? 'var(--accent-green)' : pnlPctNum < 0 ? 'var(--accent-red)' : 'var(--text-primary)';
+        
+        const maxPnl = p.max_pnl_pct != null ? p.max_pnl_pct.toFixed(2) + '%' : '—';
+        const tpProg = p.tp_progress_pct != null ? p.tp_progress_pct.toFixed(0) : '0';
+        const tpColor = p.tp_progress_pct >= 66 ? 'var(--accent-green)' : p.tp_progress_pct >= 33 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+        const status = p.status || 'unknown';
+        const statusHtml = status === 'phantom' 
+          ? '<span class="badge" style="background:rgba(168,85,247,0.15);color:#c084fc;border:1px solid rgba(168,85,247,0.3)">👻 PHANTOM</span>' 
+          : `<span class="badge ${status === 'open' ? 'approve' : 'reject'}">${status.toUpperCase()}</span>`;
+        
+        const score = p.initial_signal_score != null ? p.initial_signal_score.toFixed(2) : '—';
+        
+        const current = status === 'open' || status === 'phantom' ? formatPrice(p.current_price) : '—';
+        const close = status === 'closed' ? formatPrice(p.current_price) : '—';
+        const rowStyle = status === 'phantom' ? 'opacity: 0.6; font-style: italic; background: rgba(50,50,50,0.3);' : '';
+        
+        const entry = formatPrice(p.entry_price);
+        const sl = p.current_sl != null ? formatPrice(p.current_sl) : '—';
+        const opened = p.opened_at ? new Date(p.opened_at).toLocaleString('en-GB', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+        return `<tr style="${rowStyle}">
+          <td style="font-size:11px; white-space:nowrap;">${opened}</td>
+          <td style="font-weight:600">${p.symbol}</td>
+          <td><span class="badge ${sideClass}">${sideLabel}</span></td>
+          <td>${entry}</td>
+          <td>${current}</td>
+          <td style="color:var(--text-main); font-weight:600;">${close}</td>
+          <td style="color:${pnlColor};font-weight:600">
+            ${pnlUsdtStr}<br>
+            <span style="font-size:11px; opacity:0.75; font-weight:normal">${pnlPctStr}</span>
+          </td>
+          <td style="color:var(--accent-cyan)">${maxPnl}</td>
+          <td>
+            <div class="score-bar-wrap">
+              <span style="color:${tpColor};font-weight:600">${tpProg}%</span>
+              <div class="score-bar"><div class="score-bar-fill" style="width:${Math.min(tpProg, 100)}%;background:${tpColor}"></div></div>
+            </div>
+          </td>
+          <td>${sl}</td>
+          <td>${score}</td>
+          <td>${statusHtml}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    // ── Load Balance ─────────────────────────────────────
+    async function loadBalance() {
+      try {
+        const res = await fetch(`${API}/api/account`);
+        const data = await res.json();
+        if (data.error) {
+          document.getElementById('stat-balance').textContent = '—';
+          document.getElementById('stat-balance-sub').textContent = data.error;
+          return;
+        }
+        const equity = data.equity || 0;
+        const uPnl = data.unrealized_pnl || 0;
+        const avail = data.available || 0;
+        
+        document.getElementById('stat-balance').textContent = `$${equity.toFixed(2)}`;
+        
+        // Color based on unrealized PnL
+        const balEl = document.getElementById('stat-balance');
+        if (uPnl > 0) {
+          balEl.style.color = 'var(--accent-green)';
+        } else if (uPnl < 0) {
+          balEl.style.color = 'var(--accent-red)';
+        } else {
+          balEl.style.color = 'var(--accent-cyan)';
+        }
+        
+        const uPnlStr = uPnl >= 0 ? `+$${uPnl.toFixed(2)}` : `-$${Math.abs(uPnl).toFixed(2)}`;
+        document.getElementById('stat-balance-sub').innerHTML = 
+          `uPnL: <span style="color:${uPnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'}">${uPnlStr}</span> · avail: $${avail.toFixed(2)}`;
+      } catch (e) {
+        document.getElementById('stat-balance').textContent = '—';
+        document.getElementById('stat-balance-sub').textContent = 'connection error';
+      }
+    }
+
+    // ── v0.14.4: Risk Metrics (Sharpe, Sortino, MaxDD, PF, Calmar) ──
+    async function loadRiskMetrics() {
+      try {
+        const r = await fetch('/api/risk-metrics');
+        const d = await r.json();
+        if (d.error) return;
+        
+        const fmt = (v) => typeof v === 'number' ? v.toFixed(2) : v;
+        const color = (v, good) => v > good ? 'var(--accent-green)' : v > 0 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+        
+        const el = (id) => document.getElementById(id);
+        el('rm-sharpe').textContent = fmt(d.sharpe_ratio);
+        el('rm-sharpe').style.color = color(d.sharpe_ratio, 1.0);
+        
+        el('rm-sortino').textContent = d.sortino_ratio === '∞' ? '∞' : fmt(d.sortino_ratio);
+        el('rm-sortino').style.color = d.sortino_ratio === '∞' ? 'var(--accent-green)' : color(d.sortino_ratio, 1.5);
+        
+        el('rm-maxdd').textContent = '-' + fmt(d.max_drawdown_pct) + '%';
+        el('rm-maxdd').style.color = d.max_drawdown_pct > 20 ? 'var(--accent-red)' : d.max_drawdown_pct > 10 ? 'var(--accent-yellow)' : 'var(--accent-green)';
+        
+        el('rm-pf').textContent = fmt(d.profit_factor);
+        el('rm-pf').style.color = color(d.profit_factor, 1.5);
+        
+        el('rm-calmar').textContent = fmt(d.calmar_ratio);
+        el('rm-calmar').style.color = color(d.calmar_ratio, 2.0);
+        
+        el('rm-windays').textContent = d.win_days + '/' + d.trading_days;
+        el('rm-windays').style.color = (d.win_days / d.trading_days) > 0.5 ? 'var(--accent-green)' : 'var(--accent-red)';
+        el('rm-windays-sub').textContent = Math.round(100 * d.win_days / d.trading_days) + '% win rate (days)';
+      } catch(e) { console.warn('Risk metrics load failed:', e); }
+    }
+    loadRiskMetrics();
+
+    // ── Midas Benchmark ─────────────────────────────────
+    async function loadMidasBenchmark() {
+      try {
+        const d = await fetchJSON(API + '/api/midas-benchmark');
+        if (d.error) return;
+        const el = (id) => document.getElementById(id);
+        el('mb-midas-avg').textContent = fmtPnl(d.midas_avg_pnl);
+        el('mb-midas-avg').style.color = pnlColor(d.midas_avg_pnl);
+        el('mb-approve-avg').textContent = fmtPnl(d.re_approve_avg);
+        el('mb-approve-avg').style.color = pnlColor(d.re_approve_avg);
+        el('mb-delta').textContent = fmtPnl(d.re_delta_vs_midas);
+        el('mb-delta').style.color = pnlColor(d.re_delta_vs_midas);
+        el('mb-tp-wr').textContent = d.tp_win_rate != null ? d.tp_win_rate + '%' : '—';
+        el('mb-tp-wr').style.color = d.tp_win_rate > 30 ? 'var(--accent-green)' : d.tp_win_rate > 20 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+        el('mb-resolve-h').textContent = d.avg_hours_to_resolve != null ? d.avg_hours_to_resolve + 'h' : '—';
+        el('mb-resolve-h').style.color = 'var(--accent-cyan)';
+        const resolved = (d.tp_hits || 0) + (d.sl_hits || 0);
+        el('mb-coverage').textContent = resolved + ' / ' + (d.still_open || 0);
+        el('mb-coverage').style.color = 'var(--text-secondary)';
+        // v0.16.1: corrected metrics
+        const cInfo = el('mb-corrected-info');
+        if (d.corrected_approve_avg != null && d.penalty_affected_count > 0) {
+          const cDelta = d.corrected_delta_vs_midas;
+          const cColor = cDelta > 0 ? 'var(--accent-green)' : cDelta < 0 ? 'var(--accent-red)' : 'var(--accent-yellow)';
+          cInfo.innerHTML = `Approve avg: <span style="color:${pnlColor(d.corrected_approve_avg)}">${fmtPnl(d.corrected_approve_avg)}</span> ` +
+            `| Delta: <span style="color:${cColor}">${fmtPnl(cDelta)}</span> ` +
+            `| <span style="color:var(--text-muted)">${d.reclassified_count || 0} reclassified / ${d.penalty_affected_count} affected</span>`;
+        } else {
+          cInfo.textContent = 'no corrected data yet';
+        }
+      } catch(e) { console.warn('Midas benchmark load failed:', e); }
+    }
+    loadMidasBenchmark();
+
+    // ── v0.18.0: Exit Quality Tracker ─────────────────────
+    async function loadExitQuality() {
+      try {
+        const [acted, be, missed] = await Promise.all([
+          fetchJSON(API + '/api/exit-quality?since=2026-03-26'),
+          fetchJSON(API + '/api/exit-quality/sl-breakeven?since=2026-03-26'),
+          fetchJSON(API + '/api/exit-quality/missed-exits?since=2026-03-26'),
+        ]);
+
+        // Phase 1: Dumalka Acted
+        const actedTb = document.getElementById('eq-acted-tbody');
+        if (acted && acted.by_close_reason && acted.by_close_reason.length > 0) {
+          actedTb.innerHTML = acted.by_close_reason.map(r => {
+            const premPct = r.cnt > 0 ? Math.round((r.premature_exit_cnt / r.cnt) * 100) : 0;
+            const premColor = premPct > 60 ? 'var(--accent-red)' : premPct > 40 ? 'var(--accent-yellow)' : 'var(--accent-green)';
+            const since = r.first_analyzed ? new Date(r.first_analyzed).toLocaleDateString('en',{month:'short',day:'numeric'}) : '—';
+            return `<tr>
+              <td style="font-weight:500;font-size:11px;">${r.close_reason || '—'}</td>
+              <td>${r.cnt}</td>
+              <td style="color:${pnlColor(r.avg_exit_pnl)}">${fmtPnl(r.avg_exit_pnl)}</td>
+              <td style="color:${pnlColor(r.avg_pnl_1h)}">${fmtPnl(r.avg_pnl_1h)}</td>
+              <td style="color:${pnlColor(r.avg_pnl_4h)}">${fmtPnl(r.avg_pnl_4h)}</td>
+              <td style="color:${pnlColor(r.avg_pnl_24h)}">${fmtPnl(r.avg_pnl_24h)}</td>
+              <td style="color:${premColor}">${premPct}%</td>
+              <td style="font-size:11px;color:var(--text-muted);">${r.would_tp || 0}tp / ${r.would_sl || 0}sl / ${r.neither || 0}n</td>
+              <td style="font-size:10px;color:var(--text-muted);">${since}</td>
+            </tr>`;
+          }).join('');
+          const t = acted.totals || {};
+          const tPrem = t.total > 0 ? Math.round((t.premature_cnt / t.total) * 100) : 0;
+          document.getElementById('eq-maturity-badge').textContent = `${t.total || 0} analyzed · premature rate: ${tPrem}%`;
+        } else {
+          actedTb.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);font-size:12px;">Collecting data... backfill loop is running every 15 min.</td></tr>';
+          document.getElementById('eq-maturity-badge').textContent = 'data collection in progress';
+        }
+
+        // Phase 2: sl_breakeven
+        const beTb = document.getElementById('eq-be-tbody');
+        if (be && be.by_close_reason && be.by_close_reason.length > 0) {
+          beTb.innerHTML = be.by_close_reason.map(r => `<tr>
+            <td style="font-weight:500;font-size:11px;">${r.close_reason || '—'}</td>
+            <td>${r.positions_with_be}</td>
+            <td>${r.stopped_near_be}</td>
+            <td style="color:var(--accent-green)">${r.profitable_after}</td>
+            <td style="color:var(--accent-red)">${r.loss_after}</td>
+            <td style="color:${pnlColor(r.avg_final_pnl)}">${fmtPnl(r.avg_final_pnl)}</td>
+          </tr>`).join('');
+        } else {
+          beTb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);font-size:12px;">No sl_breakeven data yet.</td></tr>';
+        }
+
+        // Phase 3: Missed exits
+        const missedTb = document.getElementById('eq-missed-tbody');
+        if (missed && missed.by_zone && missed.by_zone.length > 0) {
+          const zoneNames = {0:'Zone 0 (< BE)',1:'Zone 1 (BE)',2:'Zone 2 (partial)',3:'Zone 3 (trailing)',4:'Zone 4 (moonbag)'};
+          missedTb.innerHTML = missed.by_zone.map(z => {
+            const zone = z.zone_at_peak;
+            const leakedColor = z.avg_leaked > 5 ? 'var(--accent-red)' : z.avg_leaked > 2 ? 'var(--accent-yellow)' : 'var(--text-secondary)';
+            return `<tr>
+              <td style="font-weight:500;font-size:11px;">${zoneNames[zone] || 'Zone ' + zone}</td>
+              <td>${z.positions}</td>
+              <td style="color:var(--accent-green)">${fmtPnl(z.avg_max_pnl)}</td>
+              <td style="color:${pnlColor(z.avg_realized)}">${fmtPnl(z.avg_realized)}</td>
+              <td style="color:${leakedColor};font-weight:600;">${fmtPnl(z.avg_leaked)}</td>
+              <td style="color:var(--accent-red);font-weight:600;">${fmtPnl(z.total_leaked)}</td>
+              <td style="color:var(--text-muted);">${z.avg_mc_p_tp_at_peak != null ? (z.avg_mc_p_tp_at_peak * 100).toFixed(0) + '%' : '—'}</td>
+              <td style="color:var(--text-muted);">${z.avg_hours_peak_to_sl != null ? z.avg_hours_peak_to_sl + 'h' : '—'}</td>
+            </tr>`;
+          }).join('');
+        } else {
+          missedTb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);font-size:12px;">No sl_hit data for selected period.</td></tr>';
+        }
+
+        // Training Insights
+        const insightsDiv = document.getElementById('eq-insights');
+        const insightsList = document.getElementById('eq-insights-list');
+        if (missed && missed.training_insights && missed.training_insights.length > 0) {
+          insightsDiv.style.display = 'block';
+          insightsList.innerHTML = missed.training_insights.map(i => {
+            const color = i.severity === 'critical' ? '#ff4444' : i.severity === 'high' ? '#ffa500' : '#88aaff';
+            return `<div style="margin-bottom:4px;padding-left:10px;border-left:2px solid ${color};font-size:11px;">${i.insight}</div>`;
+          }).join('');
+        } else {
+          insightsDiv.style.display = 'none';
+        }
+
+      } catch(e) {
+        console.warn('Exit Quality load failed:', e);
+      }
+    }
+    loadExitQuality();
+
+    // ── Refresh all ─────────────────────────────────────
+    async function refreshAll() {
+      await Promise.all([loadHealth(), loadAnalysis(), loadSignals(), loadPositions(), loadBalance(), loadRiskMetrics(), loadMidasBenchmark(), loadExitQuality()]);
+    }
+
+    // ── Init ────────────────────────────────────────────
+    setLanguage(currentLang);
+    // ── Scroll → header opacity ──────────────
+    window.addEventListener('scroll', () => {
+      document.querySelector('.header').classList.toggle('scrolled', window.scrollY > 20);
+    }, { passive: true });
+
+    setInterval(refreshAll, 30000);  // auto-refresh every 30s
+  </script>
+  <footer style="text-align:center;padding:16px 0 24px;color:var(--text-muted);font-size:11px;font-family:'JetBrains Mono',monospace;border-top:1px solid rgba(255,255,255,0.04);margin-top:32px;">
+    Risk Engine v0.19.8 · Updated 2026-04-11 · API-first Bot Integration · Health Watchdog · Multi-Horizon ML · Scout 8 signal types · 34 symbols
+  </footer>
+</body>
+
+</html>

@@ -1,0 +1,2444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Risk Engine — Analytics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0b0e17;
+            --bg-card: #121829;
+            --bg-card-hover: #1a2238;
+            --border: #1e2a45;
+            --text-main: #e2e8f0;
+            --text-dim: #8892b0;
+            --text-bright: #f8fafc;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-blue: #3b82f6;
+            --accent-yellow: #f59e0b;
+            --accent-purple: #8b5cf6;
+            --accent-cyan: #06b6d4;
+            --gradient-green: linear-gradient(135deg, #10b981, #059669);
+            --gradient-red: linear-gradient(135deg, #ef4444, #dc2626);
+            --gradient-blue: linear-gradient(135deg, #3b82f6, #2563eb);
+            --gradient-purple: linear-gradient(135deg, #8b5cf6, #7c3aed);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-main);
+            min-height: 100vh;
+        }
+
+        /* ── Header ─────────────────────────────── */
+        .header {
+            background: transparent;
+            border-bottom: none;
+            padding: 16px 32px;
+            display: flex; align-items: center; justify-content: space-between;
+            position: sticky; top: 0; z-index: 100;
+            transition: background 0.4s ease, backdrop-filter 0.4s ease;
+        }
+        .header::after {
+            content: '';
+            position: absolute;
+            bottom: -20px; left: 0; right: 0;
+            height: 20px;
+            background: linear-gradient(to bottom, rgba(10,14,23,0.3), transparent);
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            pointer-events: none;
+        }
+        .header.scrolled {
+            background: rgba(10, 14, 23, 0.55);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+        }
+        .header.scrolled::after {
+            opacity: 1;
+        }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .logo {
+            width: 40px; height: 40px;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .logo svg { width: 22px; height: 22px; color: white; }
+        .header h1 { font-size: 1.3rem; font-weight: 700; color: var(--text-bright); }
+        .header h1 span { background: linear-gradient(135deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+        .header-right { display: flex; align-items: center; gap: 16px; }
+        .nav-link {
+            color: var(--text-dim); text-decoration: none; font-size: 12px; font-weight: 600;
+            display: flex; align-items: center; gap: 6px; transition: color 0.2s;
+        }
+        .nav-link:hover { color: white; }
+
+        .lang-switcher { display: flex; gap: 2px; background: rgba(30,42,69,0.5); border-radius: 8px; padding: 2px; }
+        .lang-btn {
+            background: transparent; border: none; color: var(--text-dim); font-size: 11px;
+            font-weight: 600; padding: 4px 10px; border-radius: 6px; cursor: pointer; transition: all 0.2s;
+        }
+        .lang-btn.active { background: var(--accent-blue); color: white; }
+
+        /* ── Content ────────────────────────────── */
+        .content { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
+
+        /* ── KPI Cards ──────────────────────────── */
+        .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px; }
+        .kpi-card {
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+            padding: 20px; position: relative; overflow: hidden;
+        }
+        .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 12px 12px 0 0; }
+        .kpi-card.green::before { background: var(--gradient-green); }
+        .kpi-card.blue::before { background: var(--gradient-blue); }
+        .kpi-card.purple::before { background: var(--gradient-purple); }
+        .kpi-card.red::before { background: var(--gradient-red); }
+        .kpi-label { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; cursor: help; }
+        .kpi-value { font-size: 1.8rem; font-weight: 700; margin: 4px 0; }
+        .kpi-sub { font-size: 0.72rem; color: var(--text-dim); }
+        .kpi-value.positive { color: var(--accent-green); }
+        .kpi-value.negative { color: var(--accent-red); }
+
+        /* ── Chart Grid ─────────────────────────── */
+        .chart-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 28px; }
+        .chart-card {
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px;
+        }
+        .chart-card.full-width { grid-column: 1 / -1; }
+        .chart-card h3 {
+            font-size: 0.85rem; font-weight: 600; margin-bottom: 16px; color: var(--text-bright);
+            display: flex; align-items: center; gap: 8px;
+        }
+        .chart-container { position: relative; height: 260px; }
+        .chart-container.tall { height: 320px; }
+
+        /* ── Tables ─────────────────────────────── */
+        .data-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+        .data-table th {
+            text-align: left; padding: 10px 12px; font-weight: 600; color: var(--text-dim);
+            border-bottom: 2px solid var(--border); font-size: 0.72rem;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .data-table th.sortable {
+            cursor: pointer; user-select: none; transition: color 0.2s;
+        }
+        .data-table th.sortable:hover { color: var(--text-bright); }
+        .data-table th .sort-arrow { font-size: 0.65rem; margin-left: 3px; opacity: 0.3; }
+        .data-table th.sort-active .sort-arrow { opacity: 1; color: var(--accent-blue); }
+        .data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+        .data-table tr:hover { background: var(--bg-card-hover); }
+        .pnl-positive { color: var(--accent-green); font-weight: 600; }
+        .pnl-negative { color: var(--accent-red); font-weight: 600; }
+
+        /* ── Badges ─────────────────────────────── */
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; }
+        .badge-green { background: rgba(16,185,129,0.15); color: var(--accent-green); }
+        .badge-yellow { background: rgba(245,158,11,0.15); color: var(--accent-yellow); }
+        .badge-red { background: rgba(239,68,68,0.15); color: var(--accent-red); }
+        .badge-blue { background: rgba(59,130,246,0.15); color: var(--accent-blue); }
+
+        /* ── Win Rate Bar ───────────────────────── */
+        .wr-bar { display: flex; align-items: center; gap: 8px; }
+        .wr-bar-bg { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+        .wr-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+
+        /* ── Tooltips ───────────────────────────── */
+        [data-tooltip] { position: relative; cursor: help; }
+        [data-tooltip]:before {
+            content: attr(data-tooltip);
+            position: absolute; bottom: 125%; left: 50%; transform: translateX(-50%);
+            background: #1e293b; color: #fff; padding: 8px 12px; border-radius: 6px;
+            font-size: 11px; font-weight: 500; text-transform: none;
+            white-space: normal; width: 200px; text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.8); border: 1px solid var(--border);
+            opacity: 0; visibility: hidden; transition: opacity 0.2s, transform 0.2s;
+            z-index: 999999; line-height: 1.4; pointer-events: none;
+        }
+        [data-tooltip]:hover:before { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
+
+        /* Tooltip shown below (for elements near the top/header) */
+        .tooltip-below[data-tooltip]:before {
+            bottom: auto;
+            top: 125%;
+        }
+
+        .loading { text-align: center; padding: 60px; color: var(--text-dim); font-size: 1.1rem; }
+
+        @media (max-width: 900px) {
+            .chart-grid { grid-template-columns: 1fr; }
+            .kpi-row { grid-template-columns: repeat(2, 1fr); }
+            .content { padding: 16px; }
+            .header { padding: 12px 16px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────── -->
+<div class="header">
+    <div class="header-left">
+        <div class="logo">
+            <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+            </svg>
+        </div>
+        <h1 data-i18n="header_title">Risk <span>Engine</span> Analytics</h1>
+    </div>
+    <div class="header-right">
+        <a href="/dashboard" class="nav-link">
+            <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:16px;height:16px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+            </svg>
+            <span data-i18n="nav_dashboard">Dashboard</span>
+        </a>
+        <div class="lang-switcher">
+            <button class="lang-btn active" onclick="setLanguage('en')">EN</button>
+            <button class="lang-btn" onclick="setLanguage('ru')">RU</button>
+        </div>
+    </div>
+</div>
+
+<div class="content">
+    <div id="app" class="loading"><span data-i18n="loading">Loading analytics...</span></div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// I18N
+// ══════════════════════════════════════════════════════════════
+let lang = localStorage.getItem('re_lang') || 'en';
+
+const i18n = {
+    en: {
+        header_title: 'Risk <span>Engine</span> Analytics',
+        nav_dashboard: 'Dashboard',
+        loading: 'Loading analytics...',
+
+        // KPI
+        kpi_signals: 'Total Signals', kpi_signals_sub: 'evaluated by Risk Engine',
+        kpi_positions: 'Closed Positions', kpi_positions_sub: 'tracked by Думалка',
+        kpi_capture: 'Capture Ratio', kpi_capture_sub_tpl: '{rate}% profitable ({n} positions)',
+        kpi_snapshots: 'ML Snapshots', kpi_snapshots_sub: 'position snapshots for training',
+
+        // KPI tooltips
+        tt_signals: 'Total number of signals evaluated by the Risk Engine scoring pipeline.',
+        tt_positions: 'Positions tracked end-to-end by the Думалка position tracker until close.',
+        tt_capture: 'Avg ratio of realized PnL to peak PnL. Higher = better profit capture.',
+        tt_snapshots: 'Position snapshots with market data, MC forward projections — used for ML training.',
+        
+        // Leaked Profit Widget
+        leak_title: '💧 Dumalka Profit Leakage Tracking',
+        leak_desc: 'Tracking positions that reached >1% max PnL but closed at a loss.',
+        leak_leaked: 'Leaked Positions',
+        leak_lost_pnl: 'Lost PnL (Leakage)',
+        leak_saved: 'Potential Saved',
+        leak_capture: 'Current Capture Ratio',
+
+        // Chart titles
+        chart_rec_eff: '📈 RE Recommendation Effectiveness',
+        chart_score_bucket: '🎯 Score Bucket vs Actual PnL',
+        chart_close_reason: '🔒 Position Close Reasons (detailed)',
+        chart_zone_dist: '🏗️ Zone Distribution (snapshots)',
+        chart_daily_pnl: '📅 Daily PnL Timeline',
+        chart_wr_trend: '📈 Win Rate Trend (7-day rolling)',
+        chart_what_if: '🔮 What-If: Manual Closes Analysis',
+        chart_time_decay: '⏳ Time-Decay Analysis',
+        desc_time_decay: 'Trade performance by duration. Focus on the 1-4h "Danger Zone" where momentum dies.',
+        tt_time_decay: 'In the 1-4h window, trades have historically shown a 20.2% win rate. Momentum has decayed, so the engine protects capital by forcing SL to breakeven.',
+        chart_wr_duration: 'Win Rate by Duration (%)',
+        chart_pnl_duration: 'Cumulative PnL by Duration (USDT)',
+        lbl_trades: 'trades',
+        lbl_total_pnl: 'Total PnL (USDT)',
+        tt_what_if: 'If the trader hadn\'t closed manually, what would have happened? Based on actual price data after close.',
+        chart_mc_accuracy: '🎯 MC Prediction Accuracy',
+        tt_mc_accuracy: 'How accurate are Monte Carlo P(TP) predictions vs actual outcomes. Higher predicted P(TP) should = higher win rate.',
+        chart_hold_time: '⏱️ Optimal Hold Time by Close Reason',
+        tt_hold_time: 'Average hours positions were held before closing, grouped by close reason.',
+        chart_time_of_day: '🕐 Time-of-Day Performance (UTC)',
+        tt_time_of_day: 'Average PnL and win rate by hour when the position was opened. Find the best trading hours.',
+        chart_vol_outcome: '🌊 Volatility at Entry → Outcome',
+        tt_vol_outcome: 'How entry volatility affects trade outcomes. Identifies optimal volatility conditions.',
+        chart_rr_analysis: '⚖️ R:R Realized vs Expected',
+        tt_rr_analysis: 'Risk/Reward analysis. Expected R:R from signal vs what was actually realized.',
+        chart_midas_quality: '🎤 Midas Signal Quality',
+        tt_midas_quality: 'TP1/TP3 hit rates, SL hits, and overall signal quality from Midas.',
+        chart_rejected: '🚫 Rejected Signals Outcome',
+        tt_rejected: 'What happened to signals RE approved vs rejected? Validates scoring accuracy.',
+        chart_slippage: '📉 Entry Slippage',
+        tt_slippage: 'Difference between signal price and actual entry. Positive = unfavorable.',
+        chart_sym_quality: '🏆 Symbol Performance Ranking',
+        tt_sym_quality: 'Win rate and avg PnL per symbol. Shows which coins Midas predicts best.',
+        chart_streaks: '🔥 Win/Loss Streaks',
+        tt_streaks: 'Current and historical win/loss streaks. Detects regime changes.',
+        chart_sl_opt: '💡 SL Optimization / Loss Recovery',
+        tt_sl_opt: 'What max SL% would make all trades net profitable? Simulates capped losses.',
+        chart_timeout: '⏱ Timeout Analytics — Missed Profits',
+        tt_timeout: 'TIMEOUT = position stuck in Zone 0 (no SL/TP hit) and auto-closed after 12h. These positions often reached good profit but price reversed before TP was hit. Shows how much profit was "on the table" but not captured.',
+
+        // Ghost Tracker (Opportunity Cost)
+        chart_ghost_tracker: '👻 Ghost Tracker (Opportunity Cost)',
+        desc_ghost_tracker: 'Visualizes What-If scenarios. Compares trade max favorable excursion (Missed Profit) vs max adverse excursion (Saved Drawdown) 4h post-close.',
+        tt_ghost_tracker: 'MFE (Missed Favorable Excursion) vs MAE (Max Adverse Excursion). High MAE means the Risk Engine saved you from a heavy dump.',
+        chart_mfe_mae_reason: 'Avg Missed Profit vs Saved Loss by Reason',
+        tbl_missed_rockets: 'Missed Rockets (Closed, then Pumped)',
+        tbl_saved_disasters: 'Saved from Abyss (Closed, then Dumped)',
+
+        // Accumulation Radar
+        chart_accum_radar: '📡 Accumulation Radar',
+        tt_accum_radar: 'Detects Coiled Spring setups holding large derivative leverage.',
+        th_accum_score: 'Score',
+        tt_accum_score: 'Score (0.0 - 1.0) is composed of 4 factors:\n1. Open Interest Growth >5% (max +0.35)\n2. Volume Anomaly >1.5x (max +0.25)\n3. Funding Divergence (max +0.20)\n4. Price Compression (max +0.20)',
+
+        // Chart tooltips
+        tt_rec_eff: 'Average PnL grouped by RE recommendation (approve/reduce/reject). Shows whether scoring correctly filters signals.',
+        tt_score_bucket: 'Actual average PnL for different score ranges. Higher scores should correlate with better PnL.',
+        tt_close_reason: 'How positions were closed. TIMEOUT = position auto-closed after 12h in Zone 0 (no SL/TP hit). These are positions where price didn\'t reach SL or TP and the system forced exit.',
+        tt_zone_dist: 'How many snapshots were recorded in each zone. Zone 0 = early, Zone 4 = near TP3.',
+        tt_daily_pnl: 'Daily sum of realized PnL from closed positions. Purple line shows cumulative PnL.',
+        tt_wr_trend: 'Rolling 7-day win rate. Shows how the strategy\'s success rate evolves over time. Below 50% = danger zone.',
+
+        // Tables
+        tbl_rec_breakdown: '⚡ RE Recommendation Breakdown',
+        close_stats_title: 'Close Reason Breakdown',
+        tbl_symbol_perf: '🏆 Per-Symbol Performance',
+        th_rec: 'Recommendation', th_trades: 'Trades', th_winrate: 'Win Rate', th_avg_pnl: 'Avg PnL',
+        th_symbol: 'Symbol', th_avg_peak: 'Avg Peak', th_pnl_usdt: 'Σ PnL %', th_pnl_usdt_abs: 'PnL USDT',
+
+        // Watchlist Alerts
+        chart_watchlist: '🚨 Post-Mortem: Dump/Pump Alerts',
+        tt_watchlist: 'Opportunities detected by the autonomous Watchlist Scanner. Shows what the RE score was at the moment of the dump/pump, and what the PnL would have been 1h/4h later.',
+        th_time: 'Time', th_type: 'Alert', th_trigger: 'Trigger', th_price: 'Price', th_score: 'Score', th_1h: '1h PnL', th_4h: '4h PnL', th_actual: 'Would PnL',
+
+        tt_th_rec: 'Risk Engine recommendation: Approve (score ≥0.6), Reduce (0.45-0.6), Reject (<0.45).',
+        tt_th_trades: 'Number of closed trades with this characteristic.',
+        tt_th_winrate: 'Percentage of trades with positive PnL.',
+        tt_th_avg_pnl: 'Average realized profit/loss percentage.',
+        tt_th_pnl_usdt: 'Cumulative sum of realized PnL percentage across all trades for this group.',
+        tt_th_pnl_usdt_abs: 'Absolute PnL in USDT. Calculated as: position_size × entry_price × pnl_pct / 100.',
+        tt_th_symbol: 'Trading pair.',
+        tt_th_avg_peak: 'Average peak PnL reached before close. Compare with Avg PnL to gauge capture efficiency.',
+    },
+    ru: {
+        header_title: 'Risk <span>Engine</span> — Аналитика',
+        nav_dashboard: 'Дашборд',
+        loading: 'Загрузка аналитики...',
+
+        kpi_signals: 'Всего сигналов', kpi_signals_sub: 'оценено Risk Engine',
+        kpi_positions: 'Закрытых позиций', kpi_positions_sub: 'отслежено Думалкой',
+        kpi_capture: 'Capture Ratio', kpi_capture_sub_tpl: '{rate}% прибыльных ({n} позиций)',
+        kpi_snapshots: 'ML Снимки', kpi_snapshots_sub: 'снимков позиций для обучения',
+
+        tt_signals: 'Общее количество сигналов, прошедших через скоринг Risk Engine.',
+        tt_positions: 'Позиции, отслеженные от открытия до закрытия трекером Думалка.',
+        tt_capture: 'Среднее отношение реализованного PnL к пиковому. Выше = лучше фиксируем прибыль.',
+        tt_snapshots: 'Снимки позиций с рыночными данными, MC прогнозами — для обучения ML.',
+
+        chart_rec_eff: '📈 Эффективность рекомендаций RE',
+        chart_score_bucket: '🎯 Скор-бакеты vs PnL',
+        chart_close_reason: '🔒 Причины закрытия (детально)',
+        chart_zone_dist: '🏗️ Распределение по зонам',
+        chart_daily_pnl: '📅 Дневной PnL',
+        chart_wr_trend: '📈 Win Rate тренд (7 дней)',
+        chart_what_if: '🔮 What-If: Анализ ручных закрытий',
+        chart_time_decay: '⏳ Time-Decay Анализ',
+        desc_time_decay: 'Результативность по длительности. Фокус на "Зону Смерти" 1-4ч, где импульс затухает.',
+        tt_time_decay: 'В окне 1-4ч исторически Win Rate составляет всего 20.2%. Импульс угасает, поэтому движок защищает капитал, переводя SL в безубыток.',
+        chart_wr_duration: 'Win Rate по длительности (%)',
+        chart_pnl_duration: 'Суммарный PnL по длительности (USDT)',
+        lbl_trades: 'сделок',
+        lbl_total_pnl: 'Суммарный PnL (USDT)',
+        tt_what_if: 'Что бы произошло, если бы трейдер не закрыл вручную? На основе реальных данных цены после закрытия.',
+        chart_mc_accuracy: '🎯 Точность MC предсказаний',
+        tt_mc_accuracy: 'Насколько точны предсказания Monte Carlo P(TP) vs реальный результат.',
+        chart_hold_time: '⏱️ Время удержания по причине',
+        tt_hold_time: 'Среднее время удержания позиции до закрытия, по типу закрытия.',
+        chart_time_of_day: '🕐 Эффективность по часам (UTC)',
+        tt_time_of_day: 'Средний PnL и win rate по часу открытия. Найдите лучшие часы для торговли.',
+        chart_vol_outcome: '🌊 Волатильность → Результат',
+        tt_vol_outcome: 'Как волатильность при входе влияет на исход.',
+        chart_rr_analysis: '⚖️ R:R Реальный vs Ожидаемый',
+        tt_rr_analysis: 'Анализ Risk/Reward. Ожидаемый R:R от сигнала vs реальный.',
+        chart_midas_quality: '🎤 Качество сигналов Midas',
+        tt_midas_quality: 'Процент достижения TP1/TP3, SL hits и общее качество.',
+        chart_rejected: '🚫 Результат отклонённых',
+        tt_rejected: 'Что произошло с одобренными vs отклонёнными? Валидация скоринга.',
+        chart_slippage: '📉 Проскальзывание',
+        tt_slippage: 'Разница между ценой сигнала и фактическим входом.',
+        chart_sym_quality: '🏆 Рейтинг символов',
+        tt_sym_quality: 'Win rate и PnL по монетам. Какие монеты Midas предсказывает лучше.',
+        chart_streaks: '🔥 Серии побед/поражений',
+        tt_streaks: 'Текущие и исторические серии. Обнаружение смены режима.',
+        chart_sl_opt: '💡 Оптимизация SL / Пересчёт убытков',
+        tt_sl_opt: 'Какой макс SL% сделал бы все сделки прибыльными? Симуляция ограниченных убытков.',
+        chart_timeout: '⏱ Аналитика таймаутов — упущенная прибыль',
+        tt_timeout: 'TIMEOUT = позиция застряла в Zone 0 (не дошла ни до SL, ни до TP) и была закрыта автоматически через 12ч. Часто цена достигала хорошего плюса, но откатилась назад. Показывает сколько прибыли было "на столе" но не зафиксировано.',
+
+        // Ghost Tracker (Opportunity Cost)
+        chart_ghost_tracker: '👻 Ghost Tracker (Упущенная Выгода)',
+        desc_ghost_tracker: 'Визуализация сценариев What-If. Сравнивает упущенную прибыль (MFE) и спасённый капитал от просадков (MAE) за 4 часа после закрытия позиции.',
+        tt_ghost_tracker: 'MFE (Missed Favorable Excursion) vs MAE (Max Adverse Excursion). Высокий MAE означает, что Думалка спасла вас от жесткого дампа.',
+        chart_mfe_mae_reason: 'Упущенная Прибыль vs Спасённый Убыток',
+        tbl_missed_rockets: 'Упущенные Ракеты (Закрыли, затем Памп)',
+        tbl_saved_disasters: 'Спасены от Бездны (Закрыли, затем Дамп)',
+
+        // Accumulation Radar
+        chart_accum_radar: '📡 Радар Монет',
+        tt_accum_radar: 'Детектор паттерна "Сжатая Пружина".',
+        th_accum_score: 'Score',
+        tt_accum_score: 'Счет (0.0 - 1.0) рассчитывается из 4 факторов:\n1. Рост Open Interest >5% (макс +0.35)\n2. Аномальный объем >1.5x (макс +0.25)\n3. Дивергенция Funding Rate (макс +0.20)\n4. Сжатие Цены (макс +0.20)',
+
+        tt_rec_eff: 'Средний PnL по рекомендациям RE. Показывает, корректно ли скоринг фильтрует сигналы.',
+        tt_score_bucket: 'Реальный PnL для разных диапазонов скора. Высокий скор должен давать лучший PnL.',
+        tt_close_reason: 'Как были закрыты позиции. TIMEOUT = позиция авто-закрыта через 12ч в Zone 0 (не дошла до SL/TP). Цена не достигла ни стоп-лосса ни тейк-профита и система принудительно закрыла.',
+        tt_zone_dist: 'Кол-во снимков в каждой зоне. Зона 0 = начало, Зона 4 = вблизи TP3.',
+        tt_daily_pnl: 'Дневная сумма реализованного PnL. Фиолетовая линия — кумулятивный PnL.',
+        tt_wr_trend: 'Скользящий win rate за 7 дней. Показывает динамику эффективности. Ниже 50% = зона опасности.',
+
+        tbl_rec_breakdown: '⚡ Разбивка по рекомендациям',
+        close_stats_title: 'Причины закрытия',
+        tbl_symbol_perf: '🏆 Результаты по символам',
+        th_rec: 'Рекомендация', th_trades: 'Сделки', th_winrate: 'Win Rate', th_avg_pnl: 'Ср. PnL',
+        th_symbol: 'Символ', th_avg_peak: 'Ср. пик', th_pnl_usdt: 'Σ PnL %', th_pnl_usdt_abs: 'PnL USDT',
+
+        // Watchlist Alerts
+        chart_watchlist: '🚨 Post-Mortem: Проливы/Пампы',
+        tt_watchlist: 'Возможности, обнаруженные сканером. Показывает скор RE в момент события и симулированный PnL через 1-4 часа для обучения.',
+        th_time: 'Время', th_type: 'Тип', th_trigger: 'Триггер', th_price: 'Цена', th_score: 'Скор', th_1h: '1h PnL', th_4h: '4h PnL', th_actual: 'Факт. PnL',
+
+        tt_th_rec: 'Рекомендация RE: Approve (≥0.6), Reduce (0.45-0.6), Reject (<0.45).',
+        tt_th_trades: 'Количество закрытых сделок с данной характеристикой.',
+        tt_th_winrate: 'Процент сделок с положительным PnL.',
+        tt_th_avg_pnl: 'Средний реализованный процент прибыли/убытка.',
+        tt_th_pnl_usdt: 'Кумулятивная сумма реализованного PnL в процентах по всем сделкам.',
+        tt_th_pnl_usdt_abs: 'Абсолютный PnL в USDT. Расчёт: размер_позиции × цена_входа × pnl_pct / 100.',
+        tt_th_symbol: 'Торговая пара.',
+        tt_th_avg_peak: 'Средний пиковый PnL до закрытия. Сравните с Ср. PnL для оценки capture.',
+    }
+};
+
+function T(key) { return i18n[lang][key] || i18n['en'][key] || key; }
+
+function setLanguage(l) {
+    lang = l;
+    localStorage.setItem('re_lang', l);
+    document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.textContent === l.toUpperCase()));
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (i18n[lang][key]) el.innerHTML = i18n[lang][key];
+    });
+    // Re-render with new language
+    if (window._analyticsData) renderAll(window._analyticsData);
+}
+
+// ══════════════════════════════════════════════════════════════
+// DATA LOADING
+// ══════════════════════════════════════════════════════════════
+const app = document.getElementById('app');
+
+async function loadAnalytics() {
+    try {
+        const [respAna, respWatch, respCap, respOpp, respSQ] = await Promise.all([
+            fetch('/api/analytics'),
+            fetch('/api/watchlist-alerts'),
+            fetch('/api/capture-ratio'),
+            fetch('/api/opportunity-cost'),
+            fetch('/api/scoring-quality').catch(() => ({ json: () => ({}) }))
+        ]);
+        window._analyticsData = await respAna.json();
+        window._watchlistData = await respWatch.json();
+        window._captureData = await respCap.json();
+        window._opportunityData = await respOpp.json();
+        window._scoringQualityData = typeof respSQ.json === 'function' ? await respSQ.json() : {};
+        renderAll(window._analyticsData, window._watchlistData);
+    } catch(e) {
+        app.innerHTML = `<div class="loading">Error: ${e.message}</div>`;
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════════════
+function fmt(v, d=2) { return v != null ? Number(v).toFixed(d) : '—'; }
+function fmtPnl(v) {
+    if (v == null) return '—';
+    const cls = v > 0 ? 'pnl-positive' : v < 0 ? 'pnl-negative' : '';
+    return `<span class="${cls}">${v > 0 ? '+' : ''}${Number(v).toFixed(2)}%</span>`;
+}
+function fmtUsdt(v) {
+    if (v == null) return '—';
+    const n = Number(v);
+    const cls = n > 0 ? 'pnl-positive' : n < 0 ? 'pnl-negative' : '';
+    const sign = n >= 0 ? '+$' : '-$';
+    return `<span class="${cls}" style="font-weight:700">${sign}${Math.abs(n).toFixed(0)}</span>`;
+}
+function fmtWr(wins, losses) {
+    const total = (wins||0) + (losses||0);
+    if (total === 0) return '—';
+    const wr = (wins||0) / total * 100;
+    const color = wr >= 60 ? 'var(--accent-green)' : wr >= 50 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+    return `<div class="wr-bar">
+        <span style="min-width:38px">${wr.toFixed(0)}%</span>
+        <div class="wr-bar-bg"><div class="wr-bar-fill" style="width:${wr}%;background:${color}"></div></div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// SORTABLE TABLES
+// ══════════════════════════════════════════════════════════════
+const _sortState = {};  // { tableId: { col, dir } }
+
+function makeSortableHeader(label, colKey, tableId, tooltip) {
+    const st = _sortState[tableId];
+    const active = st && st.col === colKey;
+    const arrow = active ? (st.dir === 'asc' ? '▲' : '▼') : '⇅';
+    const cls = active ? 'sortable sort-active' : 'sortable';
+    const ttAttr = tooltip ? ` data-tooltip="${tooltip}"` : '';
+    return `<th class="${cls}"${ttAttr} onclick="sortTable('${tableId}','${colKey}')">${label} <span class="sort-arrow">${arrow}</span></th>`;
+}
+
+function sortTable(tableId, colKey) {
+    const st = _sortState[tableId];
+    if (st && st.col === colKey) {
+        st.dir = st.dir === 'desc' ? 'asc' : 'desc';
+    } else {
+        _sortState[tableId] = { col: colKey, dir: 'desc' };
+    }
+    const d = window._analyticsData;
+    if (tableId === 'recTable') renderRecTable(d.by_recommendation);
+    else if (tableId === 'symbolTable') renderSymbolTable(d.by_symbol);
+    else if (tableId === 'symbolQualityTable') renderSymbolQuality(d.symbol_quality);
+}
+
+// ══════════════════════════════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════════════════════════════
+function renderAll(data) {
+    const s = data.summary;
+    const cr = s.capture_ratio;
+    const crVal = cr.avg_capture != null ? (cr.avg_capture * 100).toFixed(1) : '—';
+    const crClass = cr.avg_capture > 0 ? 'positive' : 'negative';
+    const profRate = cr.total > 0 ? ((cr.profitable / cr.total) * 100).toFixed(0) : '—';
+    const capSub = T('kpi_capture_sub_tpl').replace('{rate}', profRate).replace('{n}', cr.total);
+
+    app.innerHTML = `
+        <div class="kpi-row">
+            <div class="kpi-card blue">
+                <div class="kpi-label tooltip-below" data-tooltip="${T('tt_signals')}">${T('kpi_signals')}</div>
+                <div class="kpi-value">${s.total_signals}</div>
+                <div class="kpi-sub">${T('kpi_signals_sub')}</div>
+            </div>
+            <div class="kpi-card purple">
+                <div class="kpi-label tooltip-below" data-tooltip="${T('tt_positions')}">${T('kpi_positions')}</div>
+                <div class="kpi-value">${s.total_closed_positions}</div>
+                <div class="kpi-sub">${T('kpi_positions_sub')}</div>
+            </div>
+            <div class="kpi-card green">
+                <div class="kpi-label tooltip-below" data-tooltip="${T('tt_capture')}">${T('kpi_capture')}</div>
+                <div class="kpi-value ${crClass}">${crVal}%</div>
+                <div class="kpi-sub">${capSub}</div>
+            </div>
+            <div class="kpi-card blue">
+                <div class="kpi-label tooltip-below" data-tooltip="${T('tt_snapshots')}">${T('kpi_snapshots')}</div>
+                <div class="kpi-value">${(s.total_snapshots/1000).toFixed(1)}K</div>
+                <div class="kpi-sub">${T('kpi_snapshots_sub')}</div>
+            </div>
+        </div>
+
+        <!-- v0.10.1 System Health -->
+        <div style="margin-top:20px;margin-bottom:20px;">
+
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
+                <div class="kpi-card" style="background:linear-gradient(135deg,rgba(239,68,68,0.08),rgba(245,158,11,0.04));border-color:rgba(239,68,68,0.15);">
+                    <div class="kpi-label">🛡️ Binance Sentinel</div>
+                    <div class="kpi-value" id="a-sentinel-price" style="font-size:20px;color:#06b6d4;">—</div>
+                    <div class="kpi-sub" id="a-sentinel-sub">loading...</div>
+                </div>
+                <div class="kpi-card" style="background:linear-gradient(135deg,rgba(59,130,246,0.08),rgba(6,182,212,0.04));border-color:rgba(59,130,246,0.15);">
+                    <div class="kpi-label">📊 Orderbook Shielding</div>
+                    <div class="kpi-value" style="font-size:20px;color:#10b981;">Active</div>
+                    <div class="kpi-sub">SL behind L2 walls (≥5× median vol)</div>
+                </div>
+                <div class="kpi-card" style="background:linear-gradient(135deg,rgba(245,158,11,0.08),rgba(16,185,129,0.04));border-color:rgba(245,158,11,0.15);">
+                    <div class="kpi-label">💰 Yield-Aware Apollo</div>
+                    <div class="kpi-value" style="font-size:20px;color:#10b981;">Active</div>
+                    <div class="kpi-sub">Funding Rate → TIME_DECAY 2h–6h</div>
+                </div>
+                <div class="kpi-card" style="background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(59,130,246,0.04));border-color:rgba(139,92,246,0.15);">
+                    <div class="kpi-label">⚡ DB Optimization</div>
+                    <div class="kpi-value" style="font-size:20px;color:#10b981;">PG18+AIO</div>
+                    <div class="kpi-sub">io_uring enabled + 4 workers</div>
+                </div>
+            </div>
+            <div id="a-bg-tasks" style="margin-top:12px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;"></div>
+        </div>
+
+        <!-- v0.10.1: Accumulation Radar Widget -->
+        <div class="chart-grid">
+            <div class="chart-card full-width" id="accumRadarCard">
+                <h3 style="display:flex;align-items:center;gap:8px;" data-tooltip="${T('tt_accum_radar')}">
+                    ${T('chart_accum_radar')}
+                    <span style="font-size:0.65em;color:var(--text-dim);font-weight:400;">Coiled Spring Detection</span>
+                    <button id="accumScanBtn" onclick="triggerAccumScan()" style="margin-left:auto;padding:4px 12px;font-size:0.7em;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;border-radius:6px;cursor:pointer;">▶ Scan Now</button>
+                </h3>
+                <div id="accumRadarStats" style="display:flex;gap:16px;margin-bottom:12px;font-size:0.8rem;color:var(--text-dim);flex-wrap:wrap;"></div>
+                <div style="max-height:400px;overflow-y:auto;">
+                    <table class="data-table" id="accumRadarTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Symbol</th>
+                                <th title="${T('tt_accum_score')}" style="cursor:help; border-bottom:1px dashed var(--text-dim);">${T('th_accum_score')} ℹ️</th>
+                                <th>OI Δ24h</th>
+                                <th>Vol Ratio</th>
+                                <th>Funding</th>
+                                <th>Range 4h</th>
+                                <th>Direction</th>
+                                <th>Price</th>
+                            </tr>
+                        </thead>
+                        <tbody id="accumRadarBody"></tbody>
+                    </table>
+                </div>
+                <div id="accumRadarEmpty" style="display:none;text-align:center;padding:24px;color:var(--text-dim);">
+                    No accumulation data yet. Click "Scan Now" to run the first scan.
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3 data-tooltip="${T('tt_rec_eff')}">${T('chart_rec_eff')}</h3>
+                <div class="chart-container" id="recEffChart"></div>
+            </div>
+            <div class="chart-card">
+                <h3 data-tooltip="${T('tt_score_bucket')}">${T('chart_score_bucket')}</h3>
+                <div class="chart-container" id="scoreBucketChart"></div>
+            </div>
+            <div class="chart-card">
+                <h3 data-tooltip="${T('tt_close_reason')}">${T('chart_close_reason')}</h3>
+                <div class="chart-container" id="closeReasonChart"></div>
+            </div>
+            <div class="chart-card">
+                <h3 data-tooltip="${T('tt_zone_dist')}">${T('chart_zone_dist')}</h3>
+                <div class="chart-container" id="zoneChart"></div>
+            </div>
+            <div class="chart-card full-width">
+                <h3 data-tooltip="${T('tt_daily_pnl')}">${T('chart_daily_pnl')}</h3>
+                <div class="chart-container tall" id="dailyPnlChart"></div>
+            </div>
+            <div class="chart-card full-width">
+                <h3 data-tooltip="${T('tt_wr_trend')}">${T('chart_wr_trend')}</h3>
+                <div class="chart-container" id="wrTrendChart"></div>
+            </div>
+            <div class="chart-card full-width">
+                <h3 data-tooltip="${T('tt_what_if')}">${T('chart_what_if')}</h3>
+                <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;">
+                    <div class="chart-container" style="flex:0 0 260px;height:220px;" id="whatIfChart"></div>
+                    <div id="whatIfStats" style="flex:1;min-width:200px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3 data-tooltip="${T('tt_mc_accuracy')}">${T('chart_mc_accuracy')}</h3>
+                <div class="chart-container" id="mcAccuracyChart"></div>
+            </div>
+            <div class="chart-card">
+                <h3 data-tooltip="${T('tt_time_of_day')}">${T('chart_time_of_day')}</h3>
+                <div class="chart-container" id="timeOfDayChart"></div>
+            </div>
+        </div>
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3 data-tooltip="${T('tt_vol_outcome')}">${T('chart_vol_outcome')}</h3>
+                <div class="chart-container" id="volOutcomeChart"></div>
+            </div>
+            <div class="chart-card">
+                <h3 data-tooltip="${T('tt_rr_analysis')}">${T('chart_rr_analysis')}</h3>
+                <div class="chart-container" id="rrAnalysisChart"></div>
+            </div>
+        </div>
+
+        <!-- ═══ CAPTURE RATIO & PnL LEAKAGE (v0.9.0) ═══ -->
+        <div class="chart-grid" style="margin-top:28px;">
+            <div class="chart-card full-width" style="border-left:4px solid #06b6d4;background:linear-gradient(135deg, rgba(6,182,212,0.03), var(--bg-card));">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                    <div>
+                        <h3 style="margin-bottom:4px;color:#06b6d4;font-size:1.15rem;font-weight:700;">📊 Capture Ratio & PnL Leakage</h3>
+                        <div style="font-size:0.82rem;color:var(--text-dim);max-width:600px;">Capture = realized / max PnL. Goal: ≥30%. Leaked = peaked >1% but closed negative.</div>
+                    </div>
+                    <div style="font-size:10px;color:#64748b;background:rgba(6,182,212,0.08);padding:4px 10px;border-radius:6px;border:1px solid rgba(6,182,212,0.15);">v0.9.0</div>
+                </div>
+                <div id="captureKPIs" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;"></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+                    <div>
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px;">Capture by Close Reason</div>
+                        <div style="height:200px;" id="captureByReasonChart"></div>
+                    </div>
+                    <div>
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px;">Weekly Capture Trend</div>
+                        <div style="height:200px;" id="captureTrendChart"></div>
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+                    <div>
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px;">Capture Distribution</div>
+                        <div style="height:200px;" id="captureHistChart"></div>
+                    </div>
+                    <div>
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px;">Capture by Zone</div>
+                        <div style="height:200px;" id="captureZoneChart"></div>
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;">
+                    <div>
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px;">🩸 Worst Leakers (Peak → Close)</div>
+                        <div id="worstLeakersTable" style="max-height:300px;overflow-y:auto;"></div>
+                    </div>
+                    <div>
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px;">🏷️ ML Labeler Distribution</div>
+                        <div style="height:200px;" id="labelerChart"></div>
+                        <div id="labelerStats" style="margin-top:8px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ TIME-DECAY ANALYSIS (v0.9.3) ═══ -->
+        <div class="chart-grid" style="margin-top:28px;">
+            <div class="chart-card full-width" style="border-left:4px solid #f43f5e;background:linear-gradient(135deg, rgba(244,63,94,0.03), var(--bg-card));">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                    <div>
+                        <h3 style="margin-bottom:4px;color:#f43f5e;font-size:1.15rem;font-weight:700;" data-tooltip="${T('tt_time_decay')}">${T('chart_time_decay')}</h3>
+                        <div style="font-size:0.82rem;color:var(--text-dim);max-width:600px;">${T('desc_time_decay')}</div>
+                    </div>
+                    <div style="font-size:10px;color:#f43f5e;background:rgba(244,63,94,0.08);padding:4px 10px;border-radius:6px;border:1px solid rgba(244,63,94,0.15);">v0.9.3</div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                    <div>
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px;">${T('chart_wr_duration')}</div>
+                        <div style="height:220px;" id="timeDecayWRChart"></div>
+                    </div>
+                    <div>
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px;">${T('chart_pnl_duration')}</div>
+                        <div style="height:220px;" id="timeDecayPnLChart"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ GHOST TRACKER / OPPORTUNITY COST (v0.9.5) ═══ -->
+        <div class="chart-grid" style="margin-top:28px;">
+            <div class="chart-card full-width" style="border-left:4px solid #8b5cf6;background:linear-gradient(135deg, rgba(139,92,246,0.03), var(--bg-card));">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                    <div>
+                        <h3 style="margin-bottom:4px;color:#8b5cf6;font-size:1.15rem;font-weight:700;" data-tooltip="${T('tt_ghost_tracker')}">${T('chart_ghost_tracker')}</h3>
+                        <div style="font-size:0.82rem;color:var(--text-dim);max-width:600px;">${T('desc_ghost_tracker')}</div>
+                    </div>
+                    <div style="font-size:10px;color:#8b5cf6;background:rgba(139,92,246,0.08);padding:4px 10px;border-radius:6px;border:1px solid rgba(139,92,246,0.15);">v0.9.5</div>
+                </div>
+                
+                <div id="ghostKPIs" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:20px;"></div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+                    <div>
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px;">${T('chart_mfe_mae_reason')}</div>
+                        <div style="height:250px;" id="ghostTrackerChart"></div>
+                    </div>
+                    <div>
+                        <div style="display:grid;grid-template-rows:1fr 1fr;gap:16px;height:100%;">
+                            <div style="display:flex;flex-direction:column;height:100%;">
+                                <div style="font-size:11px;color:#ef4444;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px;display:flex;align-items:center;gap:6px;">
+                                    🩸 ${T('tbl_missed_rockets')}
+                                </div>
+                                <div id="missedRocketsTable" style="flex:1;overflow-y:auto;background:rgba(239,68,68,0.03);border-radius:8px;border:1px solid rgba(239,68,68,0.1);"></div>
+                            </div>
+                            <div style="display:flex;flex-direction:column;height:100%;">
+                                <div style="font-size:11px;color:#10b981;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px;display:flex;align-items:center;gap:6px;">
+                                    🛡️ ${T('tbl_saved_disasters')}
+                                </div>
+                                <div id="savedDisastersTable" style="flex:1;overflow-y:auto;background:rgba(16,185,129,0.03);border-radius:8px;border:1px solid rgba(16,185,129,0.1);"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ SCORING QUALITY / SHADOW PnL (v0.14.4) ═══ -->
+        <div class="chart-grid" style="margin-top:28px;">
+            <div class="chart-card full-width" style="border-left:4px solid #f59e0b;background:linear-gradient(135deg, rgba(245,158,11,0.03), var(--bg-card));">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                    <div>
+                        <h3 style="margin-bottom:4px;color:#f59e0b;font-size:1.15rem;font-weight:700;"
+                            data-tooltip="Tracks what would have happened to rejected signals if they had been traded. Uses the signal's own SL/TP to simulate outcomes.">
+                            🎯 Scoring Quality — Confusion Matrix
+                        </h3>
+                        <div style="font-size:0.82rem;color:var(--text-dim);max-width:600px;">
+                            Shadow PnL tracks rejected signal outcomes. SL/TP simulation determines true effectiveness of scoring.
+                        </div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span id="sq-coverage-badge" style="font-size:10px;color:var(--text-dim);background:rgba(245,158,11,0.08);padding:4px 10px;border-radius:6px;border:1px solid rgba(245,158,11,0.15);">—</span>
+                        <div style="font-size:10px;color:#f59e0b;background:rgba(245,158,11,0.08);padding:4px 10px;border-radius:6px;border:1px solid rgba(245,158,11,0.15);">v0.14.4</div>
+                    </div>
+                </div>
+                <!-- Confusion Matrix KPIs -->
+                <div id="sqKPIs" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;"></div>
+                <!-- Charts row -->
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+                    <div>
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px;">Calibration Curve — Score vs Win Rate</div>
+                        <div style="height:220px;" id="sqCalibrationChart"></div>
+                    </div>
+                    <div>
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px;">Shadow Outcome Distribution</div>
+                        <div style="height:220px;" id="sqOutcomeChart"></div>
+                    </div>
+                </div>
+                <!-- Threshold Analysis Table -->
+                <div style="font-size:11px;color:#94a3b8;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px;">Threshold Optimization — Find Optimal Score Cutoff</div>
+                <div id="sqThresholdTable" style="max-height:280px;overflow-y:auto;"></div>
+            </div>
+        </div>
+
+        <div class="chart-grid" style="margin-top:20px;">
+            <div class="chart-card full-width">
+                <h3 data-tooltip="${T('tt_hold_time')}">${T('chart_hold_time')}</h3>
+                <div class="chart-container" id="holdTimeChart"></div>
+            </div>
+        </div>
+
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3 data-tooltip="${T('tt_midas_quality')}">${T('chart_midas_quality')}</h3>
+                <div id="midasQualityStats"></div>
+            </div>
+            <div class="chart-card">
+                <h3 data-tooltip="${T('tt_streaks')}">${T('chart_streaks')}</h3>
+                <div id="streaksStats"></div>
+            </div>
+        </div>
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3 data-tooltip="${T('tt_rejected')}">${T('chart_rejected')}</h3>
+                <div class="chart-container" id="rejectedChart"></div>
+            </div>
+            <div class="chart-card">
+                <h3 data-tooltip="${T('tt_slippage')}">${T('chart_slippage')}</h3>
+                <div id="slippageStats"></div>
+            </div>
+        </div>
+        <div class="chart-grid">
+            <div class="chart-card full-width">
+                <h3 data-tooltip="${T('tt_sym_quality')}">${T('chart_sym_quality')}</h3>
+                <div id="symbolQualityTable" style="max-height:400px;overflow-y:auto;"></div>
+            </div>
+        </div>
+
+        <div class="chart-grid">
+            <div class="chart-card full-width">
+                <h3 data-tooltip="${T('tt_sl_opt')}">${T('chart_sl_opt')}</h3>
+                <div id="slOptStats"></div>
+                <div class="chart-container" id="slOptChart"></div>
+            </div>
+        </div>
+
+        <div class="chart-grid">
+            <div class="chart-card full-width">
+                <h3 data-tooltip="${T('tt_watchlist')}">${T('chart_watchlist')}</h3>
+                <div id="watchlistStats" style="display:flex;gap:16px;margin-bottom:12px;font-size:0.8rem;color:var(--text-dim);"></div>
+                <div style="max-height:300px;overflow-y:auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>${T('th_time')}</th>
+                                <th>${T('th_symbol')}</th>
+                                <th>${T('th_type')}</th>
+                                <th>${T('th_price')}</th>
+                                <th>${T('th_score')}</th>
+                                <th>${T('th_actual')}</th>
+                            </tr>
+                        </thead>
+                        <tbody id="watchlistTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-grid">
+            <div class="chart-card full-width">
+                <h3 data-tooltip="${T('tt_timeout')}">${T('chart_timeout')}</h3>
+                <div id="timeoutStats"></div>
+                <div class="chart-container" id="timeoutChart"></div>
+            </div>
+        </div>
+
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3>${T('tbl_rec_breakdown')}</h3>
+                <table class="data-table">
+                    <thead><tr id="recTableHead">
+                        ${makeSortableHeader(T('th_rec'), 'rec', 'recTable', T('tt_th_rec'))}
+                        ${makeSortableHeader(T('th_trades'), 'trades', 'recTable', T('tt_th_trades'))}
+                        ${makeSortableHeader(T('th_winrate'), 'winrate', 'recTable', T('tt_th_winrate'))}
+                        ${makeSortableHeader(T('th_avg_pnl'), 'avg_pnl', 'recTable', T('tt_th_avg_pnl'))}
+                        ${makeSortableHeader(T('th_pnl_usdt'), 'sum_pnl_pct', 'recTable', T('tt_th_pnl_usdt'))}
+                        ${makeSortableHeader(T('th_pnl_usdt_abs'), 'pnl_usdt', 'recTable', T('tt_th_pnl_usdt_abs'))}
+                    </tr></thead>
+                    <tbody id="recTable"></tbody>
+                </table>
+                <div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(148,163,184,0.08);">
+                    <h4 style="font-size:12px;color:#94a3b8;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.8px;">
+                        ${T('close_stats_title')}
+                    </h4>
+                    <div id="closeStatsGrid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;"></div>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>${T('tbl_symbol_perf')}</h3>
+                <table class="data-table">
+                    <thead><tr id="symbolTableHead">
+                        ${makeSortableHeader(T('th_symbol'), 'symbol', 'symbolTable', T('tt_th_symbol'))}
+                        ${makeSortableHeader(T('th_trades'), 'trades', 'symbolTable', T('tt_th_trades'))}
+                        ${makeSortableHeader(T('th_winrate'), 'winrate', 'symbolTable', T('tt_th_winrate'))}
+                        ${makeSortableHeader(T('th_avg_pnl'), 'avg_pnl', 'symbolTable', T('tt_th_avg_pnl'))}
+                        ${makeSortableHeader(T('th_pnl_usdt'), 'sum_pnl_pct', 'symbolTable', T('tt_th_pnl_usdt'))}
+                        ${makeSortableHeader(T('th_pnl_usdt_abs'), 'pnl_usdt', 'symbolTable', T('tt_th_pnl_usdt_abs'))}
+                        ${makeSortableHeader(T('th_avg_peak'), 'avg_max_pnl', 'symbolTable', T('tt_th_avg_peak'))}
+                    </tr></thead>
+                    <tbody id="symbolTable"></tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    app.classList.remove('loading');
+
+    // v0.10.1: Load Sentinel & background task status
+    loadAnalyticsSentinel();
+
+    renderRecTable(data.by_recommendation);
+    renderSymbolTable(data.by_symbol);
+    renderRecEffChart(data.by_recommendation);
+    renderScoreBucketChart(data.by_score_bucket);
+    renderCloseReasonChart(data.close_reasons_detailed || data.close_reasons);
+    renderZoneChart(data.zone_distribution);
+    renderDailyPnlChart(data.daily_pnl);
+    if (data.win_rate_trend) renderWrTrendChart(data.win_rate_trend);
+    renderCloseStats(data.close_reasons_detailed || data.close_reasons);
+    if (data.what_if_summary) renderWhatIfChart(data.what_if_summary, data.hold_time_analysis);
+    if (data.mc_accuracy) renderMcAccuracyChart(data.mc_accuracy);
+    if (data.time_of_day) renderTimeOfDayChart(data.time_of_day);
+    if (data.volatility_outcome) renderVolOutcomeChart(data.volatility_outcome);
+    if (data.rr_analysis) renderRrAnalysisChart(data.rr_analysis);
+    if (data.hold_time_by_reason) renderHoldTimeChart(data.hold_time_by_reason);
+    if (data.midas_hit_rate) renderMidasQuality(data.midas_hit_rate);
+    if (data.streaks) renderStreaks(data.streaks);
+    if (data.rejected_signals) renderRejectedChart(data.rejected_signals);
+    if (data.slippage) renderSlippage(data.slippage);
+    if (data.symbol_quality) renderSymbolQuality(data.symbol_quality);
+    if (data.sl_optimization) renderSlOptimization(data.sl_optimization);
+    if (data.timeout_analytics) renderTimeoutAnalytics(data.timeout_analytics);
+    if (data.time_decay) renderTimeDecay(data.time_decay);
+    if (window._watchlistData) renderWatchlistAlerts(window._watchlistData);
+
+    // ── Render Capture Ratio Section (v0.9.0) ──
+    if (window._captureData) renderCaptureRatio(window._captureData);
+
+    // ── Render Ghost Tracker Section (v0.9.5) ──
+    if (window._opportunityData) renderOpportunityCost(window._opportunityData);
+}
+
+// ── Tables ───────────────────────────────
+function renderCloseStats(reasons) {
+    const grid = document.getElementById('closeStatsGrid');
+    if (!grid || !reasons || !reasons.length) return;
+    const colorMap = {
+        sl_hit: '#ef4444', tp3_hit: '#10b981', tp1_hit: '#3b82f6', tp1_partial: '#3b82f6',
+        timeout: '#f59e0b', manual_close_profit: '#22c55e', manual_close_loss: '#f87171',
+        manual_close_breakeven: '#94a3b8', unknown: '#64748b'
+    };
+    const labelMap = {
+        sl_hit: 'SL Hit', tp3_hit: 'TP3 Hit', tp1_hit: 'TP1', tp1_partial: 'TP1',
+        timeout: 'Timeout', manual_close_profit: '✋ Profit',
+        manual_close_loss: '✋ Loss', manual_close_breakeven: '✋ BE',
+        unknown: 'Unknown'
+    };
+    const total = reasons.reduce((s, r) => s + r.cnt, 0);
+    grid.innerHTML = reasons.map(r => {
+        const key = r.reason || r.close_reason || '?';
+        const color = colorMap[key] || '#64748b';
+        const label = labelMap[key] || key;
+        const pct = ((r.cnt / total) * 100).toFixed(0);
+        const avgPnl = r.avg_pnl ? (r.avg_pnl > 0 ? '+' : '') + r.avg_pnl.toFixed(2) + '%' : '—';
+        return `<div style="padding:8px 10px;background:rgba(15,23,42,0.5);border:1px solid rgba(148,163,184,0.06);border-radius:8px;border-left:3px solid ${color};">
+            <div style="font-size:11px;color:#94a3b8;margin-bottom:2px;">${label}</div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;">
+                <span style="font-size:16px;font-weight:700;">${r.cnt}</span>
+                <span style="font-size:11px;color:#64748b;">${pct}%</span>
+            </div>
+            <div style="font-size:10px;color:${r.avg_pnl > 0 ? '#10b981' : r.avg_pnl < 0 ? '#ef4444' : '#94a3b8'};margin-top:2px;">avg ${avgPnl}</div>
+        </div>`;
+    }).join('');
+}
+
+function _applySortBy(arr, tableId, defaults) {
+    const st = _sortState[tableId];
+    const col = st ? st.col : defaults.col;
+    const dir = st ? st.dir : defaults.dir;
+    const sorted = [...arr];
+    sorted.sort((a, b) => {
+        let va, vb;
+        if (col === 'winrate') {
+            va = (a.wins||0) / Math.max(1, (a.trades || a.cnt || ((a.wins||0)+(a.losses||0))));
+            vb = (b.wins||0) / Math.max(1, (b.trades || b.cnt || ((b.wins||0)+(b.losses||0))));
+        } else if (col === 'rec' || col === 'symbol') {
+            va = (a[col]||'').toString().toLowerCase();
+            vb = (b[col]||'').toString().toLowerCase();
+            return dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+        } else {
+            va = Number(a[col]) || 0;
+            vb = Number(b[col]) || 0;
+        }
+        return dir === 'asc' ? va - vb : vb - va;
+    });
+    return sorted;
+}
+
+function _updateSortHeaders(tableId) {
+    const headRow = document.getElementById(tableId + 'Head');
+    if (!headRow) return;
+    const st = _sortState[tableId];
+    headRow.querySelectorAll('th.sortable').forEach(th => {
+        const onclick = th.getAttribute('onclick') || '';
+        const match = onclick.match(/sortTable\('[^']+','([^']+)'\)/);
+        if (!match) return;
+        const colKey = match[1];
+        const active = st && st.col === colKey;
+        th.classList.toggle('sort-active', active);
+        const arrowEl = th.querySelector('.sort-arrow');
+        if (arrowEl) arrowEl.textContent = active ? (st.dir === 'asc' ? '▲' : '▼') : '⇅';
+    });
+}
+
+function renderRecTable(recs) {
+    const tbody = document.getElementById('recTable');
+    const badges = { approve: 'badge-green', reduce: 'badge-yellow', reject: 'badge-red', strong: 'badge-blue' };
+    const sorted = _applySortBy(recs, 'recTable', {col:'trades', dir:'desc'});
+    tbody.innerHTML = sorted.map(r => {
+        const rec = r.rec || 'unknown';
+        return `<tr>
+            <td><span class="badge ${badges[rec] || ''}">${rec.toUpperCase()}</span></td>
+            <td>${r.trades}</td>
+            <td>${fmtWr(r.wins, r.losses)}</td>
+            <td>${fmtPnl(r.avg_pnl)}</td>
+            <td>${fmtPnl(r.sum_pnl_pct)}</td>
+            <td>${fmtUsdt(r.pnl_usdt)}</td>
+        </tr>`;
+    }).join('');
+    _updateSortHeaders('recTable');
+}
+
+function renderSymbolTable(symbols) {
+    const tbody = document.getElementById('symbolTable');
+    const sorted = _applySortBy(symbols, 'symbolTable', {col:'pnl_usdt', dir:'desc'});
+    tbody.innerHTML = sorted.map(s => `<tr>
+        <td style="font-weight:600">${s.symbol}</td>
+        <td>${s.trades}</td>
+        <td>${fmtWr(s.wins, s.trades - (s.wins||0))}</td>
+        <td>${fmtPnl(s.avg_pnl)}</td>
+        <td>${fmtPnl(s.sum_pnl_pct)}</td>
+        <td>${fmtUsdt(s.pnl_usdt)}</td>
+        <td>${fmtPnl(s.avg_max_pnl)}</td>
+    </tr>`).join('');
+    _updateSortHeaders('symbolTable');
+}
+
+// ── Charts ───────────────────────────────
+const chartDefaults = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { color: '#8892b0', font: { family: 'Inter' } } } },
+};
+
+function renderRecEffChart(recs) {
+    const ctx = document.createElement('canvas');
+    document.getElementById('recEffChart').appendChild(ctx);
+    const labels = recs.map(r => (r.rec||'unknown').toUpperCase());
+    const colors = { APPROVE: '#10b981', REDUCE: '#f59e0b', REJECT: '#ef4444', STRONG: '#3b82f6', UNKNOWN: '#64748b' };
+    new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Avg PnL %', data: recs.map(r => r.avg_pnl||0),
+            backgroundColor: labels.map(l => colors[l]||'#64748b'), borderRadius: 6 }] },
+        options: { ...chartDefaults,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { grid: { color: '#1e2a45' }, ticks: { color: '#8892b0', callback: v => v.toFixed(1)+'%' } },
+                x: { grid: { display: false }, ticks: { color: '#8892b0' } }
+            }
+        }
+    });
+}
+
+function renderScoreBucketChart(buckets) {
+    const ctx = document.createElement('canvas');
+    document.getElementById('scoreBucketChart').appendChild(ctx);
+    new Chart(ctx, {
+        type: 'bar',
+        data: { labels: buckets.map(b => b.bucket), datasets: [{ label: 'Avg PnL %',
+            data: buckets.map(b => b.avg_pnl||0), backgroundColor: buckets.map(b => {
+                const l = b.bucket.toLowerCase();
+                if (l.includes('approve')) return '#10b981';
+                if (l.includes('reduce')) return '#f59e0b';
+                if (l.includes('reject')) return '#ef4444';
+                if (l.includes('strong')) return '#3b82f6';
+                return '#64748b';
+            }), borderRadius: 6 }] },
+        options: { ...chartDefaults,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { grid: { color: '#1e2a45' }, ticks: { color: '#8892b0', callback: v => v.toFixed(1)+'%' } },
+                x: { grid: { display: false }, ticks: { color: '#8892b0', font: { size: 10 } } }
+            }
+        }
+    });
+}
+
+function renderCloseReasonChart(reasons) {
+    const ctx = document.createElement('canvas');
+    document.getElementById('closeReasonChart').appendChild(ctx);
+    const colorMap = {
+        sl_hit: '#ef4444', tp3_hit: '#10b981', tp1_hit: '#3b82f6', tp1_partial: '#3b82f6',
+        timeout: '#f59e0b', manual_close_profit: '#22c55e', manual_close_loss: '#f87171',
+        manual_close_breakeven: '#94a3b8', unknown: '#64748b'
+    };
+    const labelMap = {
+        sl_hit: 'SL Hit', tp3_hit: 'TP3 Hit', tp1_hit: 'TP1 Hit', tp1_partial: 'TP1 Partial',
+        timeout: 'Timeout', manual_close_profit: '✋ Manual (profit)',
+        manual_close_loss: '✋ Manual (loss)', manual_close_breakeven: '✋ Manual (BE)',
+        unknown: 'Unknown'
+    };
+    // Use 'reason' field if present (detailed), otherwise 'close_reason' (legacy)
+    const labels = reasons.map(r => labelMap[r.reason || r.close_reason] || r.reason || r.close_reason || '?');
+    const keys = reasons.map(r => r.reason || r.close_reason || '?');
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: { labels, datasets: [{
+            data: reasons.map(r => r.cnt),
+            backgroundColor: keys.map(k => colorMap[k] || '#64748b'),
+            borderWidth: 0, hoverOffset: 8
+        }] },
+        options: { ...chartDefaults, cutout: '60%',
+            plugins: { legend: { position: 'right', labels: { color: '#8892b0', font: { size: 11 }, padding: 12 } },
+                tooltip: { callbacks: { label: c => {
+                    const r = reasons[c.dataIndex];
+                    return `${labels[c.dataIndex]}: ${r.cnt} (avg ${fmt(r.avg_pnl)}%)`;
+                }}}
+            }
+        }
+    });
+}
+
+function renderZoneChart(zones) {
+    const ctx = document.createElement('canvas');
+    document.getElementById('zoneChart').appendChild(ctx);
+    const colors = ['#64748b', '#3b82f6', '#8b5cf6', '#f59e0b', '#10b981'];
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: zones.map(z => `Zone ${z.zone ?? '?'}`),
+            datasets: [
+                { label: 'Snapshots', data: zones.map(z => z.cnt),
+                  backgroundColor: colors.slice(0, zones.length), borderRadius: 4, yAxisID: 'y' },
+                { label: 'Avg PnL%', data: zones.map(z => z.avg_pnl||0), type: 'line',
+                  borderColor: '#10b981', pointBackgroundColor: '#10b981', tension: 0.3, yAxisID: 'y1' },
+            ]
+        },
+        options: { ...chartDefaults,
+            scales: {
+                y: { grid: { color: '#1e2a45' }, ticks: { color: '#8892b0' }, position: 'left' },
+                y1: { grid: { display: false }, ticks: { color: '#10b981', callback: v => v.toFixed(1)+'%' }, position: 'right' },
+                x: { grid: { display: false }, ticks: { color: '#8892b0' } }
+            }
+        }
+    });
+}
+
+function renderDailyPnlChart(daily) {
+    const ctx = document.createElement('canvas');
+    document.getElementById('dailyPnlChart').appendChild(ctx);
+    let cumPnl = 0;
+    const cumData = daily.map(d => { cumPnl += (d.total_pnl||0); return cumPnl; });
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: daily.map(d => d.day),
+            datasets: [
+                { label: 'Daily PnL %', data: daily.map(d => d.total_pnl||0),
+                  backgroundColor: daily.map(d => (d.total_pnl||0)>=0 ? 'rgba(16,185,129,0.6)' : 'rgba(239,68,68,0.6)'),
+                  borderRadius: 3, yAxisID: 'y' },
+                { label: 'Cumulative PnL %', data: cumData, type: 'line',
+                  borderColor: '#8b5cf6', pointBackgroundColor: '#8b5cf6', tension: 0.3,
+                  fill: true, backgroundColor: 'rgba(139,92,246,0.1)', yAxisID: 'y1' },
+            ]
+        },
+        options: { ...chartDefaults,
+            scales: {
+                y: { grid: { color: '#1e2a45' }, ticks: { color: '#8892b0', callback: v => v.toFixed(1)+'%' }, position: 'left' },
+                y1: { grid: { display: false }, ticks: { color: '#8b5cf6', callback: v => v.toFixed(1)+'%' }, position: 'right' },
+                x: { grid: { display: false }, ticks: { color: '#8892b0', font: { size: 10 }, maxRotation: 45 } }
+            }
+        }
+    });
+}
+
+// ── Scroll → header opacity ──────────────
+window.addEventListener('scroll', () => {
+    document.querySelector('.header').classList.toggle('scrolled', window.scrollY > 20);
+}, { passive: true });
+
+function renderMcAccuracyChart(data) {
+    const ctx = document.createElement('canvas');
+    document.getElementById('mcAccuracyChart').appendChild(ctx);
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.bucket),
+            datasets: [
+                { label: 'Win Rate %', data: data.map(d => d.win_rate), backgroundColor: '#8b5cf6', borderRadius: 4, yAxisID: 'y' },
+                { label: 'Avg PnL %', data: data.map(d => d.avg_pnl), type: 'line', borderColor: '#10b981',
+                  pointBackgroundColor: data.map(d => d.avg_pnl > 0 ? '#10b981' : '#ef4444'),
+                  pointRadius: 5, fill: false, yAxisID: 'y1' }
+            ]
+        },
+        options: { ...chartDefaults,
+            scales: {
+                x: { ticks: { color: '#8892b0', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.03)' } },
+                y: { position: 'left', ticks: { color: '#8b5cf6', callback: v => v+'%' }, grid: { color: 'rgba(255,255,255,0.03)' }, title: { display: true, text: 'Win Rate', color: '#8b5cf6' } },
+                y1: { position: 'right', ticks: { color: '#10b981', callback: v => v+'%' }, grid: { display: false }, title: { display: true, text: 'Avg PnL', color: '#10b981' } }
+            },
+            plugins: { legend: { labels: { color: '#8892b0' } },
+                tooltip: { callbacks: { afterBody: c => { const d2 = data[c[0].dataIndex]; return `Trades: ${d2.total}`; } } }
+            }
+        }
+    });
+}
+
+function renderTimeOfDayChart(data) {
+    const ctx = document.createElement('canvas');
+    document.getElementById('timeOfDayChart').appendChild(ctx);
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.hour + ':00'),
+            datasets: [
+                { label: 'Avg PnL %', data: data.map(d => (d.avg_pnl||0).toFixed(2)),
+                  backgroundColor: data.map(d => d.avg_pnl > 0 ? 'rgba(16,185,129,0.7)' : 'rgba(239,68,68,0.7)'),
+                  borderRadius: 3, yAxisID: 'y' },
+                { label: 'Win Rate %', data: data.map(d => d.cnt > 0 ? ((d.wins/d.cnt)*100).toFixed(0) : 0),
+                  type: 'line', borderColor: '#f59e0b', pointRadius: 3, fill: false, yAxisID: 'y1' }
+            ]
+        },
+        options: { ...chartDefaults,
+            scales: {
+                x: { ticks: { color: '#8892b0', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.03)' } },
+                y: { ticks: { color: '#10b981', callback: v => v+'%' }, grid: { color: 'rgba(255,255,255,0.03)' } },
+                y1: { position: 'right', ticks: { color: '#f59e0b', callback: v => v+'%' }, grid: { display: false } }
+            },
+            plugins: { legend: { labels: { color: '#8892b0' } },
+                tooltip: { callbacks: { afterBody: c => `Trades: ${data[c[0].dataIndex].cnt}` } }
+            }
+        }
+    });
+}
+
+function renderVolOutcomeChart(data) {
+    const ctx = document.createElement('canvas');
+    document.getElementById('volOutcomeChart').appendChild(ctx);
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.bucket),
+            datasets: [
+                { label: 'Win Rate %', data: data.map(d => Number(d.win_rate).toFixed(2)), backgroundColor: '#3b82f6', borderRadius: 4, yAxisID: 'y' },
+                { label: 'Avg PnL %', data: data.map(d => Number(d.avg_pnl).toFixed(2)), type: 'line', borderColor: '#10b981',
+                  pointBackgroundColor: data.map(d => d.avg_pnl > 0 ? '#10b981' : '#ef4444'),
+                  pointRadius: 5, fill: false, yAxisID: 'y1' }
+            ]
+        },
+        options: { ...chartDefaults,
+            scales: {
+                x: { ticks: { color: '#8892b0' }, grid: { color: 'rgba(255,255,255,0.03)' }, title: { display: true, text: 'Ann. Volatility', color: '#64748b' } },
+                y: { ticks: { color: '#3b82f6', callback: v => v+'%' }, grid: { color: 'rgba(255,255,255,0.03)' } },
+                y1: { position: 'right', ticks: { color: '#10b981', callback: v => v+'%' }, grid: { display: false } }
+            },
+            plugins: { legend: { labels: { color: '#8892b0' } },
+                tooltip: { callbacks: { afterBody: c => `Trades: ${data[c[0].dataIndex].total}` } }
+            }
+        }
+    });
+}
+
+function renderRrAnalysisChart(data) {
+    const ctx = document.createElement('canvas');
+    document.getElementById('rrAnalysisChart').appendChild(ctx);
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.bucket),
+            datasets: [
+                { label: 'Expected R:R', data: data.map(d => d.bucket.replace(/[<> :]/g,'').replace('1','').length > 0 ? parseFloat(d.bucket.match(/[\d.]+/)?.[0] || 0) : 0),
+                  backgroundColor: 'rgba(139,92,246,0.4)', borderColor: '#8b5cf6', borderWidth: 1, borderRadius: 4 },
+                { label: 'Realized R:R', data: data.map(d => d.avg_realized_rr),
+                  backgroundColor: data.map(d => d.avg_realized_rr > 0 ? 'rgba(16,185,129,0.7)' : 'rgba(239,68,68,0.7)'),
+                  borderRadius: 4 }
+            ]
+        },
+        options: { ...chartDefaults,
+            scales: {
+                x: { ticks: { color: '#8892b0' }, grid: { color: 'rgba(255,255,255,0.03)' } },
+                y: { ticks: { color: '#8892b0' }, grid: { color: 'rgba(255,255,255,0.03)' }, title: { display: true, text: 'R:R Ratio', color: '#64748b' } }
+            },
+            plugins: { legend: { labels: { color: '#8892b0' } },
+                tooltip: { callbacks: { afterBody: c => {
+                    const d2 = data[c[0].dataIndex];
+                    return `Trades: ${d2.total}\nWin Rate: ${d2.win_rate}%\nAvg PnL: ${d2.avg_pnl}%`;
+                }}}
+            }
+        }
+    });
+}
+
+function renderHoldTimeChart(data) {
+    const ctx = document.createElement('canvas');
+    document.getElementById('holdTimeChart').appendChild(ctx);
+    const colorMap = {
+        sl_hit: '#ef4444', tp3_hit: '#10b981', tp1_partial: '#3b82f6',
+        timeout: '#f59e0b', manual_close_profit: '#22c55e', manual_close_loss: '#f87171',
+        manual_close_breakeven: '#94a3b8', unknown: '#64748b'
+    };
+    const labelMap = {
+        sl_hit: 'SL Hit', tp3_hit: 'TP3 Hit', tp1_partial: 'TP1',
+        timeout: 'Timeout', manual_close_profit: '✋ Profit',
+        manual_close_loss: '✋ Loss', manual_close_breakeven: '✋ BE', unknown: 'Unknown'
+    };
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(d => labelMap[d.reason] || d.reason),
+            datasets: [{
+                label: 'Avg Hours',
+                data: data.map(d => (d.avg_hours||0).toFixed(1)),
+                backgroundColor: data.map(d => colorMap[d.reason] || '#64748b'),
+                borderRadius: 4
+            }]
+        },
+        options: { ...chartDefaults, indexAxis: 'y',
+            scales: {
+                x: { ticks: { color: '#8892b0', callback: v => v+'h' }, grid: { color: 'rgba(255,255,255,0.03)' } },
+                y: { ticks: { color: '#8892b0', font: { size: 11 } }, grid: { display: false } }
+            },
+            plugins: { legend: { display: false },
+                tooltip: { callbacks: { afterBody: c => {
+                    const d2 = data[c[0].dataIndex];
+                    return `Min: ${(d2.min_hours||0).toFixed(1)}h\nMax: ${(d2.max_hours||0).toFixed(1)}h\nTrades: ${d2.cnt}`;
+                }}}
+            }
+        }
+    });
+}
+
+function renderWhatIfChart(summary, holdTime) {
+    const chartEl = document.getElementById('whatIfChart');
+    const statsEl = document.getElementById('whatIfStats');
+    if (!chartEl || !summary || !summary.length) return;
+
+    const colorMap = { would_hit_tp: '#10b981', would_hit_sl: '#ef4444', neither_24h: '#64748b' };
+    const labelMap = { would_hit_tp: '→ TP3 Hit', would_hit_sl: '→ SL Hit', neither_24h: '→ Neither (24h)' };
+
+    const ctx = document.createElement('canvas');
+    chartEl.appendChild(ctx);
+    const total = summary.reduce((s, r) => s + r.cnt, 0);
+
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: summary.map(r => labelMap[r.what_if] || r.what_if),
+            datasets: [{ data: summary.map(r => r.cnt),
+                backgroundColor: summary.map(r => colorMap[r.what_if] || '#64748b'),
+                borderWidth: 0, hoverOffset: 6 }]
+        },
+        options: { ...chartDefaults, cutout: '60%',
+            plugins: { legend: { display: false },
+                tooltip: { callbacks: { label: c => {
+                    const r = summary[c.dataIndex];
+                    return `${labelMap[r.what_if]}: ${r.cnt} (${((r.cnt/total)*100).toFixed(0)}%)`;
+                }}}
+            }
+        }
+    });
+
+    // Stats grid
+    if (statsEl) {
+        const holdMap = {};
+        (holdTime || []).forEach(h => { holdMap[h.what_if] = h; });
+
+        statsEl.innerHTML = summary.map(r => {
+            const color = colorMap[r.what_if] || '#64748b';
+            const label = labelMap[r.what_if] || r.what_if;
+            const pct = ((r.cnt / total) * 100).toFixed(0);
+            const avgPnl = r.avg_exit_pnl != null ? (r.avg_exit_pnl > 0 ? '+' : '') + r.avg_exit_pnl.toFixed(2) + '%' : '—';
+            const ht = holdMap[r.what_if];
+            const avgH = ht ? ht.avg_hours.toFixed(0) + 'h' : '—';
+            return `<div style="padding:10px 12px;background:rgba(15,23,42,0.5);border:1px solid rgba(148,163,184,0.06);border-radius:10px;border-left:3px solid ${color};margin-bottom:8px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:13px;font-weight:600;color:${color};">${label}</span>
+                    <span style="font-size:18px;font-weight:700;">${r.cnt} <span style="font-size:11px;color:#64748b;">(${pct}%)</span></span>
+                </div>
+                <div style="display:flex;gap:12px;margin-top:4px;font-size:11px;color:#94a3b8;">
+                    <span>Exit PnL: <b style="color:${r.avg_exit_pnl > 0 ? '#10b981' : r.avg_exit_pnl < 0 ? '#ef4444' : '#94a3b8'}">${avgPnl}</b></span>
+                    <span>Avg time: <b>${avgH}</b></span>
+                </div>
+            </div>`;
+        }).join('');
+    }
+}
+
+function renderWrTrendChart(trend) {
+    const ctx = document.createElement('canvas');
+    document.getElementById('wrTrendChart').appendChild(ctx);
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: trend.map(d => d.day),
+            datasets: [
+                {
+                    label: 'Win Rate %',
+                    data: trend.map(d => d.win_rate),
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59,130,246,0.08)',
+                    pointBackgroundColor: trend.map(d => d.win_rate >= 50 ? '#10b981' : '#ef4444'),
+                    pointBorderColor: trend.map(d => d.win_rate >= 50 ? '#10b981' : '#ef4444'),
+                    pointRadius: 4,
+                    tension: 0.3,
+                    fill: true,
+                    borderWidth: 2,
+                },
+                {
+                    label: '50% Line',
+                    data: trend.map(() => 50),
+                    borderColor: 'rgba(239,68,68,0.3)',
+                    borderDash: [6, 4],
+                    pointRadius: 0,
+                    borderWidth: 1,
+                    fill: false,
+                }
+            ]
+        },
+        options: { ...chartDefaults,
+            scales: {
+                y: { min: 0, max: 100, grid: { color: '#1e2a45' },
+                     ticks: { color: '#8892b0', callback: v => v + '%' } },
+                x: { grid: { display: false },
+                     ticks: { color: '#8892b0', font: { size: 10 }, maxRotation: 45 } }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => ctx.datasetIndex === 0
+                            ? `WR: ${ctx.parsed.y}% (${trend[ctx.dataIndex].trades} trades)`
+                            : null
+                    }
+                }
+            }
+        }
+    });
+}
+
+// ── Midas Signal Quality ──
+function renderMidasQuality(d) {
+    const el = document.getElementById('midasQualityStats');
+    const statCard = (label, value, color) => `<div style="display:inline-block;padding:8px 14px;background:rgba(15,23,42,0.5);border:1px solid rgba(148,163,184,0.06);border-radius:10px;border-left:3px solid ${color};margin:4px;">
+        <div style="font-size:11px;color:#94a3b8;">${label}</div>
+        <div style="font-size:18px;font-weight:700;color:${color};">${value}</div>
+    </div>`;
+    el.innerHTML = `
+        <div style="margin-bottom:8px;font-size:12px;color:#64748b;">Total signals: <b style="color:#e2e8f0;">${d.total}</b> | Avg PnL: <b style="color:${d.avg_pnl > 0 ? '#10b981' : '#ef4444'}">${d.avg_pnl > 0 ? '+' : ''}${d.avg_pnl}%</b></div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">
+            ${statCard('TP3 Hit', d.tp3_rate + '%', '#10b981')}
+            ${statCard('TP1 Hit', d.tp1_rate + '%', '#22d3ee')}
+            ${statCard('SL Hit', d.sl_rate + '%', '#ef4444')}
+            ${statCard('Timeout', d.timeout_rate + '%', '#f59e0b')}
+            ${statCard('Manual', d.manual_rate + '%', '#8b5cf6')}
+        </div>`;
+}
+
+// ── Win/Loss Streaks ──
+function renderStreaks(d) {
+    const el = document.getElementById('streaksStats');
+    const curColor = d.current_type === 'win' ? '#10b981' : '#ef4444';
+    const curIcon = d.current_type === 'win' ? '🟢' : '🔴';
+    el.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div style="padding:12px;background:rgba(15,23,42,0.5);border:1px solid rgba(148,163,184,0.06);border-radius:10px;border-left:3px solid ${curColor};text-align:center;">
+                <div style="font-size:11px;color:#94a3b8;">Current Streak</div>
+                <div style="font-size:24px;font-weight:700;color:${curColor};">${curIcon} ${d.current_length}</div>
+                <div style="font-size:11px;color:#64748b;">${d.current_type}s in a row</div>
+            </div>
+            <div style="padding:12px;background:rgba(15,23,42,0.5);border:1px solid rgba(148,163,184,0.06);border-radius:10px;text-align:center;">
+                <div style="font-size:11px;color:#94a3b8;">Avg Streak</div>
+                <div style="font-size:24px;font-weight:700;color:#e2e8f0;">${d.avg_streak}</div>
+                <div style="font-size:11px;color:#64748b;">${d.total_streaks} total</div>
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+            <div style="padding:8px 12px;background:rgba(16,185,129,0.08);border-radius:8px;text-align:center;">
+                <span style="font-size:11px;color:#10b981;">Max Win: </span><b style="color:#10b981;font-size:16px;">${d.max_win_streak}</b>
+            </div>
+            <div style="padding:8px 12px;background:rgba(239,68,68,0.08);border-radius:8px;text-align:center;">
+                <span style="font-size:11px;color:#ef4444;">Max Loss: </span><b style="color:#ef4444;font-size:16px;">${d.max_loss_streak}</b>
+            </div>
+        </div>`;
+}
+
+// ── Rejected Signals Chart ──
+function renderRejectedChart(data) {
+    const ctx = document.createElement('canvas');
+    document.getElementById('rejectedChart').appendChild(ctx);
+    const colors = {approve: '#10b981', reduce: '#f59e0b', reject: '#ef4444', strong: '#3b82f6'};
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.rec || 'N/A'),
+            datasets: [{
+                label: 'Avg PnL %',
+                data: data.map(d => d.avg_pnl),
+                backgroundColor: data.map(d => colors[d.rec] || '#64748b'),
+                borderRadius: 6,
+            }, {
+                label: 'Win Rate %',
+                data: data.map(d => d.win_rate),
+                backgroundColor: data.map(d => (colors[d.rec] || '#64748b') + '66'),
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#94a3b8', font: {size:11} } } },
+            scales: {
+                x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
+                y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.05)' } }
+            }
+        }
+    });
+}
+
+// ── Entry Slippage Stats ──
+function renderSlippage(d) {
+    const el = document.getElementById('slippageStats');
+    const avgColor = Math.abs(d.avg_pct) < 0.01 ? '#94a3b8' : d.avg_pct > 0 ? '#ef4444' : '#10b981';
+    el.innerHTML = `
+        <div style="text-align:center;padding:8px;">
+            <div style="font-size:11px;color:#94a3b8;">Avg Slippage</div>
+            <div style="font-size:28px;font-weight:700;color:${avgColor};">${d.avg_pct > 0 ? '+' : ''}${d.avg_pct.toFixed(3)}%</div>
+            <div style="font-size:11px;color:#64748b;">${d.count} trades analyzed</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+            <div style="padding:8px 12px;background:rgba(16,185,129,0.08);border-radius:8px;text-align:center;">
+                <div style="font-size:11px;color:#10b981;">Favorable</div>
+                <div style="font-size:16px;font-weight:700;color:#10b981;">${d.favorable}</div>
+            </div>
+            <div style="padding:8px 12px;background:rgba(239,68,68,0.08);border-radius:8px;text-align:center;">
+                <div style="font-size:11px;color:#ef4444;">Unfavorable</div>
+                <div style="font-size:16px;font-weight:700;color:#ef4444;">${d.unfavorable}</div>
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+            <div style="padding:6px;text-align:center;font-size:11px;color:#94a3b8;">Best: <b style="color:#10b981;">${d.min_pct.toFixed(3)}%</b></div>
+            <div style="padding:6px;text-align:center;font-size:11px;color:#94a3b8;">Worst: <b style="color:#ef4444;">+${d.max_pct.toFixed(3)}%</b></div>
+        </div>`;
+}
+
+// ── Symbol Performance Ranking ──
+function renderSymbolQuality(data) {
+    const el = document.getElementById('symbolQualityTable');
+    const sorted = _applySortBy(data, 'symbolQualityTable', {col:'pnl_usdt', dir:'desc'});
+    const thStyle = 'padding:6px;text-align:right;cursor:pointer;user-select:none;transition:color 0.2s;';
+    const thStyleL = 'padding:6px;text-align:left;cursor:pointer;user-select:none;transition:color 0.2s;';
+    function sqHead(label, col) {
+        const st = _sortState['symbolQualityTable'];
+        const active = st && st.col === col;
+        const arrow = active ? (st.dir === 'asc' ? '▲' : '▼') : '⇅';
+        const color = active ? '#3b82f6' : '#94a3b8';
+        const align = col === 'symbol' ? thStyleL : thStyle;
+        return `<th style="${align}color:${color};" onclick="sortTable('symbolQualityTable','${col}')">${label} <span style="font-size:0.65rem;opacity:${active?'1':'0.3'}">${arrow}</span></th>`;
+    }
+    el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="border-bottom:1px solid rgba(148,163,184,0.1);">
+            ${sqHead('Symbol','symbol')}
+            ${sqHead('Trades','cnt')}
+            ${sqHead('Win Rate','win_rate')}
+            ${sqHead('Avg PnL','avg_pnl')}
+            ${sqHead('Σ PnL %','sum_pnl_pct')}
+            ${sqHead('PnL USDT','pnl_usdt')}
+            ${sqHead('Best','best')}
+            ${sqHead('Worst','worst')}
+        </tr></thead>
+        <tbody>${sorted.map((r,i) => {
+            const pct = r.sum_pnl_pct || 0;
+            const pctStr = pct >= 0 ? '+' + pct.toFixed(1) + '%' : pct.toFixed(1) + '%';
+            return `<tr style="border-bottom:1px solid rgba(148,163,184,0.03);${i<3?'background:rgba(16,185,129,0.03);':''}">
+            <td style="padding:6px;font-weight:600;color:#e2e8f0;">${i<3?['🥇','🥈','🥉'][i]+' ':''}<span style="font-family:monospace;">${r.symbol.replace('USDT','')}</span></td>
+            <td style="padding:6px;text-align:right;color:#94a3b8;">${r.cnt}</td>
+            <td style="padding:6px;text-align:right;color:${r.win_rate>=50?'#10b981':'#ef4444'};font-weight:600;">${r.win_rate}%</td>
+            <td style="padding:6px;text-align:right;color:${r.avg_pnl>0?'#10b981':'#ef4444'};font-weight:600;">${r.avg_pnl>0?'+':''}${r.avg_pnl}%</td>
+            <td style="padding:6px;text-align:right;color:${pct>0?'#10b981':'#ef4444'};font-weight:700;">${pctStr}</td>
+            <td style="padding:6px;text-align:right;font-weight:700;color:${(r.pnl_usdt||0)>0?'#10b981':(r.pnl_usdt||0)<0?'#ef4444':'#94a3b8'};">${(r.pnl_usdt||0)>=0 ? '+$' : '-$'}${Math.abs(r.pnl_usdt||0).toFixed(0)}</td>
+            <td style="padding:6px;text-align:right;color:#10b981;">${r.best>0?'+':''}${r.best}%</td>
+            <td style="padding:6px;text-align:right;color:#ef4444;">${r.worst}%</td>
+        </tr>`}).join('')}</tbody>
+    </table>`;
+}
+// ── SL Optimization / Loss Recovery ──
+function renderSlOptimization(d) {
+    const el = document.getElementById('slOptStats');
+    const netColor = d.net_pnl > 0 ? '#10b981' : '#ef4444';
+    const pfColor = d.profit_factor >= 1 ? '#10b981' : '#ef4444';
+    el.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px;">
+            <div style="padding:10px;background:rgba(15,23,42,0.5);border:1px solid rgba(148,163,184,0.06);border-radius:10px;text-align:center;">
+                <div style="font-size:11px;color:#94a3b8;">Net P&L</div>
+                <div style="font-size:20px;font-weight:700;color:${netColor};">${d.net_pnl > 0 ? '+' : ''}${d.net_pnl}%</div>
+                <div style="font-size:10px;color:#64748b;">${d.total_trades} trades</div>
+            </div>
+            <div style="padding:10px;background:rgba(15,23,42,0.5);border:1px solid rgba(148,163,184,0.06);border-radius:10px;text-align:center;">
+                <div style="font-size:11px;color:#94a3b8;">Profit Factor</div>
+                <div style="font-size:20px;font-weight:700;color:${pfColor};">${d.profit_factor}</div>
+                <div style="font-size:10px;color:#64748b;">win/loss ratio</div>
+            </div>
+            <div style="padding:10px;background:rgba(15,23,42,0.5);border:1px solid rgba(148,163,184,0.06);border-radius:10px;border-left:3px solid #f59e0b;text-align:center;">
+                <div style="font-size:11px;color:#f59e0b;">Optimal Max Loss</div>
+                <div style="font-size:20px;font-weight:700;color:#f59e0b;">${d.optimal_max_loss}%</div>
+                <div style="font-size:10px;color:#64748b;">for breakeven</div>
+            </div>
+            <div style="padding:10px;background:rgba(15,23,42,0.5);border:1px solid rgba(148,163,184,0.06);border-radius:10px;text-align:center;">
+                <div style="font-size:11px;color:#10b981;">Avg Win</div>
+                <div style="font-size:16px;font-weight:700;color:#10b981;">+${d.avg_win}%</div>
+            </div>
+            <div style="padding:10px;background:rgba(15,23,42,0.5);border:1px solid rgba(148,163,184,0.06);border-radius:10px;text-align:center;">
+                <div style="font-size:11px;color:#ef4444;">Avg Loss</div>
+                <div style="font-size:16px;font-weight:700;color:#ef4444;">${d.avg_loss}%</div>
+            </div>
+        </div>
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:8px;padding:6px 10px;background:rgba(245,158,11,0.06);border-radius:6px;border-left:3px solid #f59e0b;">
+            💡 <b>Теория</b>: Если ограничить SL до <b>${d.optimal_max_loss}%</b>, убытки покроются прибылью → <b>чистый плюс</b>. Ниже — симуляция для разных порогов.
+        </div>`;
+
+    const ctx = document.createElement('canvas');
+    document.getElementById('slOptChart').appendChild(ctx);
+    const sims = d.simulations || [];
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: sims.map(s => s.sl_cap_pct + '%'),
+            datasets: [{
+                label: 'Net PnL % (if SL capped)',
+                data: sims.map(s => s.net_pnl),
+                backgroundColor: sims.map(s => s.profitable ? 'rgba(16,185,129,0.6)' : 'rgba(239,68,68,0.5)'),
+                borderColor: sims.map(s => s.profitable ? '#10b981' : '#ef4444'),
+                borderWidth: 1,
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: ctx => `Net: ${ctx.parsed.y}% | Saved: ${sims[ctx.dataIndex].saved_pct}%` } }
+            },
+            scales: {
+                x: { title: { display: true, text: 'Max SL Cap %', color: '#94a3b8', font: { size: 11 } }, ticks: { color: '#94a3b8' }, grid: { display: false } },
+                y: { title: { display: true, text: 'Net PnL %', color: '#94a3b8', font: { size: 11 } }, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.05)' } }
+            }
+        }
+    });
+}
+
+function renderTimeoutAnalytics(d) {
+    if (!d) return;
+    const statsEl = document.getElementById('timeoutStats');
+    if (statsEl) {
+        const missedColor = d.total_missed_pnl > 50 ? '#ef4444' : d.total_missed_pnl > 20 ? '#f59e0b' : '#10b981';
+        statsEl.innerHTML = `
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px;">
+                <div style="background:rgba(15,23,42,0.6);padding:12px;border-radius:10px;border:1px solid rgba(245,158,11,0.15);">
+                    <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;">Timeouts</div>
+                    <div style="font-size:22px;font-weight:700;color:#f59e0b;">${d.total_timeouts}</div>
+                </div>
+                <div style="background:rgba(15,23,42,0.6);padding:12px;border-radius:10px;border:1px solid rgba(239,68,68,0.15);">
+                    <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;">Avg PnL at Exit</div>
+                    <div style="font-size:22px;font-weight:700;color:#ef4444;">${d.avg_pnl > 0 ? '+' : ''}${d.avg_pnl}%</div>
+                </div>
+                <div style="background:rgba(15,23,42,0.6);padding:12px;border-radius:10px;border:1px solid rgba(16,185,129,0.15);">
+                    <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;">Avg Peak PnL</div>
+                    <div style="font-size:22px;font-weight:700;color:#10b981;">+${d.avg_max_pnl}%</div>
+                </div>
+                <div style="background:rgba(15,23,42,0.6);padding:12px;border-radius:10px;border:1px solid ${missedColor}22;">
+                    <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;">Total Missed PnL</div>
+                    <div style="font-size:22px;font-weight:700;color:${missedColor};">${d.total_missed_pnl}%</div>
+                </div>
+                <div style="background:rgba(15,23,42,0.6);padding:12px;border-radius:10px;border:1px solid rgba(148,163,184,0.1);">
+                    <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;">Avg Hold</div>
+                    <div style="font-size:22px;font-weight:700;color:#94a3b8;">${d.avg_hold_hours}h</div>
+                </div>
+            </div>
+            ${d.top_symbols && d.top_symbols.length ? `
+            <div style="font-size:11px;color:#64748b;margin-bottom:8px;">Top timeout symbols: ${d.top_symbols.map(s => `<span style="color:#f59e0b;">${s.symbol}</span> (${s.count})`).join(', ')}</div>
+            ` : ''}
+        `;
+    }
+    // Peak PnL bucket chart
+    const chartEl = document.getElementById('timeoutChart');
+    if (!chartEl || !d.peak_buckets || !d.peak_buckets.length) return;
+    const bk = d.peak_buckets;
+    new Chart(chartEl, {
+        type: 'bar',
+        data: {
+            labels: bk.map(b => 'Peak ' + b.bucket),
+            datasets: [
+                { label: 'Count', data: bk.map(b => b.count), backgroundColor: '#f59e0b88', borderColor: '#f59e0b', borderWidth: 1, yAxisID: 'y' },
+                { label: 'Avg Exit PnL', data: bk.map(b => b.avg_pnl), type: 'line', borderColor: '#ef4444', pointBackgroundColor: '#ef4444', tension: 0.3, yAxisID: 'y1' },
+                { label: 'Avg Peak PnL', data: bk.map(b => b.avg_peak), type: 'line', borderColor: '#10b981', pointBackgroundColor: '#10b981', tension: 0.3, yAxisID: 'y1' },
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { labels: { color: '#94a3b8', font: { size: 10 } } },
+                tooltip: { callbacks: { label: ctx => {
+                    const b = bk[ctx.dataIndex];
+                    if (ctx.dataset.label === 'Count') return `${b.count} trades, missed ${b.total_missed}%`;
+                    return `${ctx.dataset.label}: ${ctx.parsed.y}%`;
+                } } }
+            },
+            scales: {
+                y: { position: 'left', title: { display: true, text: 'Count', color: '#94a3b8', font: { size: 10 } }, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.05)' } },
+                y1: { position: 'right', title: { display: true, text: 'PnL %', color: '#94a3b8', font: { size: 10 } }, ticks: { color: '#94a3b8' }, grid: { display: false } },
+                x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
+            }
+        }
+    });
+}
+
+// ── Time-Decay Analysis (v0.9.3) ───────────────
+function renderTimeDecay(data) {
+    const wrDiv = document.getElementById('timeDecayWRChart');
+    const pnlDiv = document.getElementById('timeDecayPnLChart');
+    if (!data || !data.length || !wrDiv || !pnlDiv) return;
+
+    wrDiv.innerHTML = '<canvas></canvas>';
+    pnlDiv.innerHTML = '<canvas></canvas>';
+
+    const wrCtx = wrDiv.querySelector('canvas');
+    const pnlCtx = pnlDiv.querySelector('canvas');
+
+    // Beautiful organic color mapping: Green (fast), Red (danger), Yellow (warning), Blue (recovery)
+    const colorMap = {
+        '0-1h': '#10b981',
+        '1-4h': '#f43f5e',
+        '4-12h': '#f59e0b',
+        '12-24h': '#3b82f6',
+        '24h+': '#8b5cf6'
+    };
+
+    const labels = data.map(d => `${d.duration} (${d.trades} ${T('lbl_trades')})`);
+    const wrData = data.map(d => Number(d.win_rate));
+    const pnlData = data.map(d => Number(d.total_pnl));
+    const colors = data.map(d => colorMap[d.duration] || '#64748b');
+
+    new Chart(wrCtx.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Win Rate %',
+                data: wrData,
+                backgroundColor: colors.map(c => c + '40'),
+                borderColor: colors,
+                borderWidth: 2,
+                borderRadius: 4,
+                barPercentage: 0.6
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                datalabels: {
+                    color: '#fff',
+                    font: { weight: 'bold', size: 10 },
+                    formatter: (v) => v + '%'
+                },
+                tooltip: { callbacks: { label: (ctx) => `${ctx.raw}% WR` } }
+            },
+            scales: {
+                y: { beginAtZero: true, max: 100, ticks: { color: '#94a3b8', font: {size: 10} }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                x: { ticks: { color: '#94a3b8', font: {size: 10} }, grid: { display: false } }
+            }
+        }
+    });
+
+    new Chart(pnlCtx.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: T('lbl_total_pnl'),
+                data: pnlData,
+                backgroundColor: pnlData.map(v => v > 0 ? '#10b98140' : '#f43f5e40'),
+                borderColor: pnlData.map(v => v > 0 ? '#10b981' : '#f43f5e'),
+                borderWidth: 2,
+                borderRadius: 4,
+                barPercentage: 0.6
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                datalabels: {
+                    color: '#fff',
+                    font: { weight: 'bold', size: 10 },
+                    formatter: (v) => (v > 0 ? '+' : '') + v
+                },
+                tooltip: { callbacks: { label: (ctx) => `${ctx.raw > 0 ? '+' : ''}${ctx.raw} USDT` } }
+            },
+            scales: {
+                y: { beginAtZero: true, ticks: { color: '#94a3b8', font: {size: 10} }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                x: { ticks: { color: '#94a3b8', font: {size: 10} }, grid: { display: false } }
+            }
+        }
+    });
+}
+
+// ── Watchlist Alerts ───────────────────────────────
+function renderWatchlistAlerts(d) {
+    if (!d || !d.alerts) return;
+
+    const statsDiv = document.getElementById('watchlistStats');
+    if (statsDiv) {
+        statsDiv.innerHTML = `
+            <div style="padding:4px 8px;background:var(--bg-card-hover);border-radius:4px;border:1px solid var(--border);">
+                Total Dumps/Pumps: <strong>${d.summary.total_alerts}</strong>
+            </div>
+            <div style="padding:4px 8px;background:var(--bg-card-hover);border-radius:4px;border:1px solid var(--border);">
+                Evaluated (1h/4h passed): <strong>${d.summary.evaluated_alerts}</strong>
+            </div>
+            <div style="padding:4px 8px;background:var(--bg-card-hover);border-radius:4px;border:1px solid var(--border);">
+                Would-Have Win Rate: <strong>${d.summary.evaluated_alerts > 0 ? ((d.summary.profitable_alerts / d.summary.evaluated_alerts) * 100).toFixed(0) : 0}%</strong>
+            </div>
+            <div style="padding:4px 8px;background:var(--bg-card-hover);border-radius:4px;border:1px solid var(--border);">
+                Avg Simulated PnL: <strong class="${d.summary.avg_would_pnl > 0 ? 'pnl-positive' : d.summary.avg_would_pnl < 0 ? 'pnl-negative' : ''}">${fmt(d.summary.avg_would_pnl, 2)}%</strong>
+            </div>
+        `;
+    }
+
+    const tbody = document.getElementById('watchlistTable');
+    if (tbody) {
+        tbody.innerHTML = d.alerts.slice(0, 100).map(a => {
+            const time = new Date(a.created_at).toLocaleString(undefined, {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+            const typeBadge = a.alert_type === 'dump' 
+                ? '<span class="badge badge-red">DUMP</span>'
+                : '<span class="badge badge-green">PUMP</span>';
+            const recBadge = a.re_recommendation === 'approve' ? 'badge-green' : a.re_recommendation === 'reduce' ? 'badge-yellow' : 'badge-red';
+            const triggerDesc = a.alert_type === 'dump' ? `Drop ${fmt(a.price_change_1h||a.price_change_4h, 1)}%` : `Rise ${fmt(a.price_change_1h||a.price_change_4h, 1)}%`;
+            
+            return `<tr>
+                <td style="color:var(--text-dim);">${time}</td>
+                <td style="font-weight:600">${a.symbol}</td>
+                <td>${typeBadge} <span style="font-size:10px;color:var(--text-dim);">${triggerDesc}</span></td>
+                <td>${fmt(a.price, 4)}</td>
+                <td><span class="badge ${recBadge}">${a.re_score ? Number(a.re_score).toFixed(3) : '—'}</span></td>
+                <td>${fmtPnl(a.would_have_pnl_pct)}</td>
+            </tr>`;
+        }).join('');
+    }
+}
+
+// ── Capture Ratio & PnL Leakage (v0.9.0) ───────────────
+function renderCaptureRatio(d) {
+    if (!d || !d.overview) return;
+    const o = d.overview;
+    const cap = Number(o.avg_capture || 0);
+    const capPct = (cap * 100).toFixed(1);
+    const capColor = cap >= 0.3 ? '#10b981' : cap >= 0 ? '#f59e0b' : '#ef4444';
+    const target = (o.target_capture * 100).toFixed(0);
+
+    // ── KPI Cards ──
+    const kpiEl = document.getElementById('captureKPIs');
+    if (kpiEl) {
+        const kpi = (label, value, sub, color, border) => `
+            <div style="background:rgba(15,23,42,0.5);border:1px solid ${border || 'rgba(148,163,184,0.06)'};padding:14px 16px;border-radius:12px;border-left:3px solid ${color};">
+                <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">${label}</div>
+                <div style="font-size:24px;font-weight:700;color:${color};margin:4px 0;">${value}</div>
+                <div style="font-size:10px;color:#64748b;">${sub}</div>
+            </div>`;
+        kpiEl.innerHTML =
+            kpi('Avg Capture Ratio', capPct + '%', `target ≥${target}%`, capColor, capColor+'33') +
+            kpi('Peaked >1%', o.peaked_1pct || 0, `of ${o.total_closed} closed`, '#3b82f6') +
+            kpi('Leaked', o.leaked || 0, 'peaked but closed negative', '#ef4444', 'rgba(239,68,68,0.2)') +
+            kpi('Total Leaked PnL', (o.total_leaked_pnl || 0) + '%', 'cumulative loss', '#ef4444') +
+            kpi('Could Have Saved', '+' + (o.potential_saved || 0) + '%', 'if caught at peak', '#10b981', 'rgba(16,185,129,0.2)') +
+            kpi('Avg Peak', (o.avg_peak || 0) + '%', 'across all closed', '#8b5cf6');
+    }
+
+    // ── Capture by Close Reason (horizontal bar) ──
+    const rEl = document.getElementById('captureByReasonChart');
+    if (rEl && d.by_reason && d.by_reason.length) {
+        const ctx = document.createElement('canvas'); rEl.appendChild(ctx);
+        const colorMap = {sl_hit:'#ef4444', tp3_hit:'#10b981', timeout:'#f59e0b', tp1_hit:'#3b82f6'};
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: d.by_reason.map(r => (r.reason||'?').replace('_',' ').toUpperCase()),
+                datasets: [{
+                    label: 'Capture Ratio',
+                    data: d.by_reason.map(r => Number(r.capture || 0)),
+                    backgroundColor: d.by_reason.map(r => colorMap[r.reason]||'#64748b'),
+                    borderRadius: 6
+                }]
+            },
+            options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false },
+                    tooltip: { callbacks: { afterBody: c => {
+                        const r = d.by_reason[c[0].dataIndex];
+                        return `Trades: ${r.cnt} | Avg Peak: ${r.avg_peak}% | Leaked: ${r.leaked}`;
+                    }}}
+                },
+                scales: {
+                    x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#8892b0', callback: v => (v*100).toFixed(0)+'%' } },
+                    y: { grid: { display: false }, ticks: { color: '#8892b0', font: { size: 11 } } }
+                }
+            }
+        });
+    }
+
+    // ── Weekly Trend (line chart with target line) ──
+    const tEl = document.getElementById('captureTrendChart');
+    if (tEl && d.trend && d.trend.length) {
+        const ctx = document.createElement('canvas'); tEl.appendChild(ctx);
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: d.trend.map(t => t.week),
+                datasets: [
+                    { label: 'Capture Ratio', data: d.trend.map(t => Number(t.capture || 0)),
+                      borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.08)', fill: true,
+                      pointBackgroundColor: d.trend.map(t => Number(t.capture||0) >= 0.3 ? '#10b981' : '#ef4444'),
+                      pointRadius: 5, tension: 0.3, borderWidth: 2 },
+                    { label: 'Target (30%)', data: d.trend.map(() => 0.3),
+                      borderColor: 'rgba(16,185,129,0.4)', borderDash: [6,4], pointRadius: 0, borderWidth: 1, fill: false }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false },
+                    tooltip: { callbacks: { label: c => c.datasetIndex===0 ? `Capture: ${(c.parsed.y*100).toFixed(1)}% (${d.trend[c.dataIndex].closed} trades, ${d.trend[c.dataIndex].leaked} leaked)` : null } }
+                },
+                scales: {
+                    y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#8892b0', callback: v => (v*100).toFixed(0)+'%' } },
+                    x: { grid: { display: false }, ticks: { color: '#8892b0', font: { size: 9 } } }
+                }
+            }
+        });
+    }
+
+    // ── Capture Distribution (histogram) ──
+    const hEl = document.getElementById('captureHistChart');
+    if (hEl && d.capture_distribution && d.capture_distribution.length) {
+        const ctx = document.createElement('canvas'); hEl.appendChild(ctx);
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: d.capture_distribution.map(b => b.bucket),
+                datasets: [{
+                    label: 'Positions',
+                    data: d.capture_distribution.map(b => b.cnt),
+                    backgroundColor: d.capture_distribution.map(b => {
+                        if (b.bucket.includes('-50')) return '#ef4444';
+                        if (b.bucket.includes('-50..0')) return '#f87171';
+                        if (b.bucket.includes('0..30')) return '#f59e0b';
+                        if (b.bucket.includes('30..50')) return '#22d3ee';
+                        if (b.bucket.includes('50..80')) return '#10b981';
+                        return '#059669';
+                    }),
+                    borderRadius: 4
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false },
+                    tooltip: { callbacks: { afterBody: c => `Avg PnL: ${d.capture_distribution[c[0].dataIndex].avg_pnl}%` } }
+                },
+                scales: {
+                    y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#8892b0' } },
+                    x: { grid: { display: false }, ticks: { color: '#8892b0', font: { size: 10 } } }
+                }
+            }
+        });
+    }
+
+    // ── Capture by Zone (bar + line) ──
+    const zEl = document.getElementById('captureZoneChart');
+    if (zEl && d.by_zone && d.by_zone.length) {
+        const ctx = document.createElement('canvas'); zEl.appendChild(ctx);
+        const zoneColors = ['#64748b', '#3b82f6', '#8b5cf6', '#f59e0b', '#10b981'];
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: d.by_zone.map(z => `Zone ${z.zone}`),
+                datasets: [
+                    { label: 'Positions', data: d.by_zone.map(z => z.cnt),
+                      backgroundColor: zoneColors.slice(0, d.by_zone.length), borderRadius: 4, yAxisID: 'y' },
+                    { label: 'Capture', data: d.by_zone.map(z => Number(z.capture || 0)), type: 'line',
+                      borderColor: '#06b6d4', pointBackgroundColor: '#06b6d4', tension: 0.3, yAxisID: 'y1' }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: '#8892b0', font: { size: 10 } } } },
+                scales: {
+                    y: { position: 'left', grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#8892b0' } },
+                    y1: { position: 'right', grid: { display: false }, ticks: { color: '#06b6d4', callback: v => (v*100).toFixed(0)+'%' } },
+                    x: { grid: { display: false }, ticks: { color: '#8892b0' } }
+                }
+            }
+        });
+    }
+
+    // ── Worst Leakers Table ──
+    const wEl = document.getElementById('worstLeakersTable');
+    if (wEl && d.worst_leakers && d.worst_leakers.length) {
+        wEl.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:11px;">
+            <thead><tr style="color:#94a3b8;border-bottom:1px solid rgba(148,163,184,0.1);">
+                <th style="padding:6px;text-align:left;">Symbol</th>
+                <th style="padding:6px;text-align:right;">Peak</th>
+                <th style="padding:6px;text-align:right;">Result</th>
+                <th style="padding:6px;text-align:right;">Wasted</th>
+                <th style="padding:6px;text-align:left;">Reason</th>
+                <th style="padding:6px;text-align:right;">Date</th>
+            </tr></thead>
+            <tbody>${d.worst_leakers.map((w,i) => {
+                const wasted = (Number(w.max_pnl) - Number(w.realized_pnl)).toFixed(1);
+                return `<tr style="border-bottom:1px solid rgba(148,163,184,0.03);${i<3?'background:rgba(239,68,68,0.04);':''}">
+                    <td style="padding:5px 6px;font-weight:600;color:#e2e8f0;">${i<3?'🔴 ':''}<span style="font-family:monospace;">${w.symbol.replace('USDT','')}</span></td>
+                    <td style="padding:5px 6px;text-align:right;color:#10b981;font-weight:600;">+${w.max_pnl}%</td>
+                    <td style="padding:5px 6px;text-align:right;color:#ef4444;font-weight:600;">${w.realized_pnl}%</td>
+                    <td style="padding:5px 6px;text-align:right;color:#f59e0b;font-weight:700;">-${wasted}%</td>
+                    <td style="padding:5px 6px;color:#94a3b8;font-size:10px;">${(w.close_reason||'').replace('_',' ')}</td>
+                    <td style="padding:5px 6px;text-align:right;color:#64748b;font-size:10px;">${w.closed_at||''}</td>
+                </tr>`;
+            }).join('')}</tbody></table>`;
+    }
+
+    // ── Labeler Stats (Doughnut) ──
+    const lEl = document.getElementById('labelerChart');
+    if (lEl && d.labeler_stats && d.labeler_stats.length) {
+        const ctx = document.createElement('canvas'); lEl.appendChild(ctx);
+        const colorMap = { hold: '#10b981', close: '#ef4444', partial: '#f59e0b', partial_close: '#f59e0b' };
+        const total = d.labeler_stats.reduce((s, l) => s + l.cnt, 0);
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: d.labeler_stats.map(l => l.action.toUpperCase()),
+                datasets: [{
+                    data: d.labeler_stats.map(l => l.cnt),
+                    backgroundColor: d.labeler_stats.map(l => colorMap[l.action] || '#64748b'),
+                    borderWidth: 0, hoverOffset: 6
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, cutout: '65%',
+                plugins: {
+                    legend: { position: 'right', labels: { color: '#8892b0', font: { size: 10 }, padding: 8 } },
+                    tooltip: { callbacks: { label: c => `${d.labeler_stats[c.dataIndex].action}: ${d.labeler_stats[c.dataIndex].cnt} (${((d.labeler_stats[c.dataIndex].cnt/total)*100).toFixed(1)}%)` } }
+                }
+            }
+        });
+        const lsEl = document.getElementById('labelerStats');
+        if (lsEl) {
+            lsEl.innerHTML = `<div style="font-size:10px;color:#64748b;text-align:center;">${total.toLocaleString()} snapshots labeled</div>`;
+        }
+    }
+}
+
+// ── Render Opportunity Cost (Ghost Tracker) ──
+function renderOpportunityCost(d) {
+    if (!d || d.error) return;
+
+    // KPI Summary Cards
+    const kEl = document.getElementById('ghostKPIs');
+    const s = d.summary || {};
+    if (kEl && s.total_trades) {
+        const netColor = parseFloat(s.net_opportunity) < 0 ? '#10b981' : '#ef4444';
+        const netIcon = parseFloat(s.net_opportunity) < 0 ? '✅' : '⚠️';
+        const kpi = (label, value, sub, color) => `
+            <div style="background:rgba(15,23,42,0.5);border:1px solid rgba(148,163,184,0.06);border-radius:10px;padding:12px;border-left:3px solid ${color};">
+                <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">${label}</div>
+                <div style="font-size:20px;font-weight:700;color:${color};margin:3px 0;">${value}</div>
+                <div style="font-size:9px;color:#64748b;">${sub}</div>
+            </div>`;
+        kEl.innerHTML =
+            kpi('Analyzed', s.total_trades, 'closed trades', '#8b5cf6') +
+            kpi('Avg MFE 4h', '+' + s.avg_mfe_4h + '%', 'missed profit', '#ef4444') +
+            kpi('Avg MAE 4h', '-' + s.avg_mae_4h + '%', 'saved drawdown', '#10b981') +
+            kpi('Net Result', netIcon + ' ' + s.net_opportunity + '%', 'MFE − MAE', netColor) +
+            kpi('Max Missed', '+' + s.max_mfe_4h + '%', 'biggest rocket', '#f43f5e') +
+            kpi('Max Saved', '-' + s.max_mae_4h + '%', 'biggest dump', '#059669');
+    }
+
+    // Chart: MFE vs MAE by Close Reason
+    const cEl = document.getElementById('ghostTrackerChart');
+    if (cEl && d.by_reason && d.by_reason.length) {
+        cEl.innerHTML = '';
+        const ctx = document.createElement('canvas'); cEl.appendChild(ctx);
+        const labels = d.by_reason.map(r => r.close_reason.toUpperCase());
+        const mfeData = d.by_reason.map(r => r.avg_mfe_4h || 0);
+        const maeData = d.by_reason.map(r => r.avg_mae_4h || 0);
+
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    { label: 'Avg Missed Profit %', data: mfeData, backgroundColor: '#10b981', borderRadius: 4 },
+                    { label: 'Avg Saved Drawdown %', data: maeData, backgroundColor: '#ef4444', borderRadius: 4 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: '#8892b0', font: { size: 11 } } }, tooltip: { mode: 'index', intersect: false } },
+                scales: {
+                    x: { ticks: { color: '#8892b0', font: { size: 10 } }, grid: { display: false } },
+                    y: { ticks: { color: '#8892b0', font: { size: 10 }, callback: v => v + '%' }, grid: { color: 'rgba(148,163,184,0.1)' } }
+                }
+            }
+        });
+    }
+
+    // Missed Rockets Table
+    const mrEl = document.getElementById('missedRocketsTable');
+    if (mrEl && d.missed_rockets && d.missed_rockets.length) {
+        mrEl.innerHTML = '<table class="data-table" style="background:transparent;"><tbody>' +
+            d.missed_rockets.map(r => `<tr>
+                <td style="padding:6px 12px;font-weight:600;font-size:11px;">${r.symbol}</td>
+                <td style="padding:6px 12px;color:#ef4444;font-size:11px;">+${fmt(r.mfe_4h)}% MFE</td>
+                <td style="padding:6px 12px;color:#64748b;font-size:10px;">${r.close_reason}</td>
+            </tr>`).join('') + '</tbody></table>';
+    }
+
+    // Saved Disasters Table
+    const sdEl = document.getElementById('savedDisastersTable');
+    if (sdEl && d.saved_disasters && d.saved_disasters.length) {
+        sdEl.innerHTML = '<table class="data-table" style="background:transparent;"><tbody>' +
+            d.saved_disasters.map(r => `<tr>
+                <td style="padding:6px 12px;font-weight:600;font-size:11px;">${r.symbol}</td>
+                <td style="padding:6px 12px;color:#10b981;font-size:11px;">-${fmt(r.mae_4h)}% MAE</td>
+                <td style="padding:6px 12px;color:#64748b;font-size:10px;">${r.close_reason}</td>
+            </tr>`).join('') + '</tbody></table>';
+    }
+}
+
+// ── v0.10.1: Sentinel & task health for analytics page ──
+async function loadAnalyticsSentinel() {
+    try {
+        const h = await fetch('/health').then(r => r.json());
+        // Sentinel card
+        if (h.sentinel) {
+            const s = h.sentinel;
+            const p = document.getElementById('a-sentinel-price');
+            const sub = document.getElementById('a-sentinel-sub');
+            if (s.active && s.last_price) {
+                p.textContent = '$' + s.last_price.toFixed(0);
+                p.style.color = '#06b6d4';
+                const ec = s.emergencies > 0 ? '#ef4444' : '#10b981';
+                sub.innerHTML = `<span style="color:#10b981">● Live</span> · msgs: ${(s.messages_received/1000).toFixed(1)}k · <span style="color:${ec}">alerts: ${s.alerts} · emerg: ${s.emergencies}</span>`;
+            } else {
+                p.textContent = s.active ? '...' : 'OFF';
+                sub.textContent = s.active ? 'connecting...' : 'not started';
+            }
+        }
+        // Background task grid
+        if (h.background_tasks) {
+            const grid = document.getElementById('a-bg-tasks');
+            if (grid) {
+                grid.innerHTML = Object.entries(h.background_tasks).map(([name, st]) => {
+                    const ok = st === 'healthy';
+                    const c = ok ? '#10b981' : st.includes('not_started') ? '#f59e0b' : '#ef4444';
+                    return `<div style="background:rgba(30,41,59,0.5);border:1px solid #1e2a45;border-radius:8px;padding:8px 12px;font-size:11px;display:flex;justify-content:space-between;align-items:center;">
+                        <span style="color:#8892b0;">${name}</span>
+                        <span style="color:${c};font-weight:600;">${ok ? '● healthy' : st}</span>
+                    </div>`;
+                }).join('');
+            }
+        }
+    } catch(e) { /* silent */ }
+}
+
+// ── Init ──────────────────────────────────
+setLanguage(lang);
+loadAnalytics().then(() => renderScoringQuality());
+loadAccumulationRadar();
+setInterval(loadAnalytics, 300000);
+setInterval(loadAnalyticsSentinel, 30000);
+setInterval(loadAccumulationRadar, 600000);  // refresh every 10 min
+
+// ── Accumulation Radar Widget ─────────────────────────────────────
+async function loadAccumulationRadar() {
+    try {
+        const _cb = new Date().getTime();
+        const resp = await fetch('/api/accumulation?_=' + _cb);
+        const data = await resp.json();
+        const symbols = data.symbols || [];
+        const tbody = document.getElementById('accumRadarBody');
+        const empty = document.getElementById('accumRadarEmpty');
+        const stats = document.getElementById('accumRadarStats');
+
+        if (!symbols.length) {
+            tbody.innerHTML = '';
+            empty.style.display = 'block';
+            document.getElementById('accumRadarTable').style.display = 'none';
+            return;
+        }
+
+        empty.style.display = 'none';
+        document.getElementById('accumRadarTable').style.display = '';
+
+        const high = symbols.filter(s => parseFloat(s.accumulation_score) >= 0.65).length;
+        const moderate = symbols.filter(s => parseFloat(s.accumulation_score) >= 0.30 && parseFloat(s.accumulation_score) < 0.65).length;
+        stats.innerHTML = `
+            <span>📡 Symbols: <b>${symbols.length}</b></span>
+            <span>🔴 High: <b>${high}</b></span>
+            <span>🟡 Moderate: <b>${moderate}</b></span>
+        `;
+
+        tbody.innerHTML = symbols.map((s, i) => {
+            const score = parseFloat(s.accumulation_score || 0);
+            const oi = parseFloat(s.oi_delta_24h_pct || 0) * 100;
+            const vol = parseFloat(s.volume_ratio || 1);
+            const fund = parseFloat(s.funding_rate || 0) * 100;
+            const range4h = parseFloat(s.price_range_4h_pct || 0);
+            const dir = (s.predicted_direction || 'long').toUpperCase();
+            const price = parseFloat(s.price || 0);
+
+            let scoreColor = '#6b7280';
+            let scoreLabel = '';
+            if (score >= 0.65) { scoreColor = '#ef4444'; scoreLabel = '🔴'; }
+            else if (score >= 0.30) { scoreColor = '#f59e0b'; scoreLabel = '🟡'; }
+            else { scoreColor = '#6b7280'; scoreLabel = '⚪'; }
+
+            const dirColor = dir === 'SHORT' ? '#f87171' : '#34d399';
+            const dirIcon = dir === 'SHORT' ? '📉' : '📈';
+
+            let crowdNote = '';
+            if (fund > 0.01) crowdNote = ' <span style="font-size:0.7em;opacity:0.6">(crowd long)</span>';
+            else if (fund < -0.01) crowdNote = ' <span style="font-size:0.7em;opacity:0.6">(crowd short)</span>';
+
+            const oiColor = oi > 10 ? '#34d399' : oi > 5 ? '#fbbf24' : '#6b7280';
+            const volBold = vol > 2.0 ? 'font-weight:bold;color:#f59e0b;' : '';
+
+            return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                <td style="color:var(--text-dim)">${i+1}</td>
+                <td><b>${s.symbol}</b></td>
+                <td style="text-align:center"><span style="display:inline-block;padding:2px 8px;border-radius:4px;background:${scoreColor}22;color:${scoreColor};font-weight:bold;">${scoreLabel} ${score.toFixed(2)}</span></td>
+                <td style="color:${oiColor};text-align:right">${oi >= 0 ? '+' : ''}${oi.toFixed(1)}%</td>
+                <td style="text-align:right;${volBold}">${vol.toFixed(1)}x</td>
+                <td style="text-align:right;color:${fund > 0.01 ? '#f87171' : fund < -0.01 ? '#34d399' : '#6b7280'}">${fund >= 0 ? '+' : ''}${fund.toFixed(3)}%</td>
+                <td style="text-align:right">${range4h.toFixed(1)}%</td>
+                <td style="text-align:center;color:${dirColor};font-weight:bold">${dirIcon} ${dir}${crowdNote}</td>
+                <td style="text-align:right;color:var(--text-dim)">$${price < 1 ? price.toFixed(4) : price < 100 ? price.toFixed(2) : price.toFixed(0)}</td>
+            </tr>`;
+        }).join('');
+    } catch(e) {
+        console.warn('Accumulation radar load failed:', e);
+    }
+}
+
+async function triggerAccumScan() {
+    const btn = document.getElementById('accumScanBtn');
+    btn.textContent = '⏳ Scanning...';
+    btn.disabled = true;
+    try {
+        const resp = await fetch('/api/accumulation/scan');
+        const data = await resp.json();
+        btn.textContent = `✅ ${data.scanned} scanned`;
+        await loadAccumulationRadar();
+        setTimeout(() => { btn.textContent = '▶ Scan Now'; btn.disabled = false; }, 3000);
+    } catch(e) {
+        btn.textContent = '❌ Error';
+        setTimeout(() => { btn.textContent = '▶ Scan Now'; btn.disabled = false; }, 3000);
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
+// SCORING QUALITY WIDGET (v0.14.4)
+// ══════════════════════════════════════════════════════════════
+async function renderScoringQuality() {
+    const d = window._scoringQualityData;
+    if (!d || d.error || !d.confusion_matrix) {
+        const el = document.getElementById('sqKPIs');
+        if (el) el.innerHTML = '<div style="color:var(--text-dim);font-size:0.85rem;padding:20px;">Shadow PnL data accumulating... Check back in 1-4 hours.</div>';
+        return;
+    }
+
+    const cm = d.confusion_matrix;
+    const summary = d.summary || {};
+    const optimal = d.optimal_threshold;
+
+    // Coverage badge
+    const covBadge = document.getElementById('sq-coverage-badge');
+    if (covBadge) covBadge.textContent = `${summary.shadow_coverage_pct || 0}% coverage`;
+
+    // ── Confusion Matrix KPIs ──
+    const sqKPIs = document.getElementById('sqKPIs');
+    if (sqKPIs) {
+        const accuracy = cm.accuracy_pct != null ? cm.accuracy_pct + '%' : '—';
+        const accColor = cm.accuracy_pct >= 60 ? '#10b981' : cm.accuracy_pct >= 50 ? '#f59e0b' : '#ef4444';
+        sqKPIs.innerHTML = `
+            <div style="background:linear-gradient(135deg,rgba(16,185,129,0.08),rgba(16,185,129,0.02));border:1px solid rgba(16,185,129,0.15);border-radius:10px;padding:14px;text-align:center;">
+                <div style="font-size:0.65rem;color:#10b981;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">✅ True Reject</div>
+                <div style="font-size:1.5rem;font-weight:700;color:#10b981;">${cm.true_reject || 0}</div>
+                <div style="font-size:0.65rem;color:var(--text-dim);">Avoided ${fmt(cm.saved_pnl_pct || 0, 1)}% loss</div>
+            </div>
+            <div style="background:linear-gradient(135deg,rgba(239,68,68,0.08),rgba(239,68,68,0.02));border:1px solid rgba(239,68,68,0.15);border-radius:10px;padding:14px;text-align:center;">
+                <div style="font-size:0.65rem;color:#ef4444;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">❌ False Reject</div>
+                <div style="font-size:1.5rem;font-weight:700;color:#ef4444;">${cm.false_reject || 0}</div>
+                <div style="font-size:0.65rem;color:var(--text-dim);">Missed ${fmt(cm.missed_pnl_pct || 0, 1)}% profit</div>
+            </div>
+            <div style="background:linear-gradient(135deg,rgba(59,130,246,0.08),rgba(59,130,246,0.02));border:1px solid rgba(59,130,246,0.15);border-radius:10px;padding:14px;text-align:center;">
+                <div style="font-size:0.65rem;color:#3b82f6;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">🎯 Accuracy</div>
+                <div style="font-size:1.5rem;font-weight:700;color:${accColor};">${accuracy}</div>
+                <div style="font-size:0.65rem;color:var(--text-dim);">(TR+TA) / Total</div>
+            </div>
+            <div style="background:linear-gradient(135deg,rgba(245,158,11,0.08),rgba(245,158,11,0.02));border:1px solid rgba(245,158,11,0.15);border-radius:10px;padding:14px;text-align:center;">
+                <div style="font-size:0.65rem;color:#f59e0b;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">⚡ Optimal Threshold</div>
+                <div style="font-size:1.5rem;font-weight:700;color:#f59e0b;">${optimal ? optimal.threshold.toFixed(2) : '—'}</div>
+                <div style="font-size:0.65rem;color:var(--text-dim);">F1=${optimal ? optimal.f1_score.toFixed(1) : '—'}</div>
+            </div>
+        `;
+    }
+
+    // ── Calibration Curve Chart ──
+    const calEl = document.getElementById('sqCalibrationChart');
+    const cal = d.calibration_curve || [];
+    if (calEl && cal.length > 0) {
+        new Chart(calEl.getContext ? calEl : calEl.appendChild(Object.assign(document.createElement('canvas'), {style:'width:100%;height:100%'})), {
+            type: 'bar',
+            data: {
+                labels: cal.map(c => c.score_bucket),
+                datasets: [
+                    {
+                        label: 'Win Rate %',
+                        data: cal.map(c => Number(c.win_rate_pct || 0)),
+                        backgroundColor: cal.map(c => Number(c.win_rate_pct || 0) >= 50 ? 'rgba(16,185,129,0.7)' : 'rgba(239,68,68,0.7)'),
+                        borderRadius: 4,
+                        yAxisID: 'y',
+                    },
+                    {
+                        label: 'Signals',
+                        data: cal.map(c => c.count),
+                        type: 'line',
+                        borderColor: '#8b5cf6',
+                        backgroundColor: 'rgba(139,92,246,0.1)',
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        yAxisID: 'y1',
+                        fill: true,
+                    }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: '#8892b0', font: { size: 10 } } } },
+                scales: {
+                    x: { ticks: { color: '#8892b0', font: { size: 10 } }, grid: { color: 'rgba(30,42,69,0.5)' } },
+                    y: { position: 'left', title: { display: true, text: 'Win Rate %', color: '#8892b0', font: { size: 10 } }, ticks: { color: '#8892b0' }, grid: { color: 'rgba(30,42,69,0.3)' }, min: 0, max: 100 },
+                    y1: { position: 'right', title: { display: true, text: 'Signals', color: '#8892b0', font: { size: 10 } }, ticks: { color: '#8892b0' }, grid: { display: false } }
+                }
+            }
+        });
+    }
+
+    // ── Shadow Outcome Doughnut ──
+    const outEl = document.getElementById('sqOutcomeChart');
+    const byRec = d.by_recommendation || [];
+    if (outEl && byRec.length > 0) {
+        const labels = byRec.map(r => r.re_recommendation);
+        const counts = byRec.map(r => r.cnt);
+        const profitableArr = byRec.map(r => r.profitable || 0);
+        const colors = labels.map(l => l === 'approve' ? 'rgba(16,185,129,0.8)' : l === 'reduce' ? 'rgba(245,158,11,0.8)' : l === 'reject' ? 'rgba(239,68,68,0.8)' : l === 'strong' ? 'rgba(59,130,246,0.8)' : 'rgba(100,116,139,0.8)');
+        new Chart(outEl.appendChild(Object.assign(document.createElement('canvas'), {style:'width:100%;height:100%'})), {
+            type: 'doughnut',
+            data: {
+                labels: labels.map((l, i) => `${l} (${counts[i]} | ${byRec[i].with_shadow || 0} shadow)`),
+                datasets: [{ data: counts, backgroundColor: colors, borderWidth: 0 }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, cutout: '55%',
+                plugins: {
+                    legend: { position: 'right', labels: { color: '#8892b0', font: { size: 10 }, padding: 8 } },
+                    tooltip: {
+                        callbacks: {
+                            afterLabel: (ctx) => {
+                                const r = byRec[ctx.dataIndex];
+                                return `Avg Shadow: ${fmt(r.avg_shadow_pnl_4h, 2)}%\nProfitable: ${r.profitable || 0}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // ── Threshold Analysis Table ──
+    const tblEl = document.getElementById('sqThresholdTable');
+    const thresholds = d.threshold_analysis || [];
+    if (tblEl && thresholds.length > 0) {
+        const bestF1 = Math.max(...thresholds.map(t => t.f1_score));
+        tblEl.innerHTML = `
+            <table class="data-table">
+                <thead><tr>
+                    <th>Threshold</th>
+                    <th>Approved</th>
+                    <th>Rejected</th>
+                    <th>Precision</th>
+                    <th>Recall</th>
+                    <th>F1 Score</th>
+                    <th>Saved PnL</th>
+                    <th>Missed PnL</th>
+                </tr></thead>
+                <tbody>${thresholds.map(t => {
+                    const isBest = t.f1_score === bestF1;
+                    const rowStyle = isBest ? 'background:rgba(245,158,11,0.08);' : '';
+                    const f1Color = t.f1_score >= 60 ? '#10b981' : t.f1_score >= 40 ? '#f59e0b' : '#ef4444';
+                    return `<tr style="${rowStyle}">
+                        <td style="font-weight:${isBest ? '700' : '400'};color:${isBest ? '#f59e0b' : ''}">${t.threshold.toFixed(2)}${isBest ? ' ⭐' : ''}</td>
+                        <td>${t.approved_count}</td>
+                        <td>${t.rejected_count}</td>
+                        <td>${t.precision_pct.toFixed(1)}%</td>
+                        <td>${t.recall_pct.toFixed(1)}%</td>
+                        <td style="font-weight:700;color:${f1Color}">${t.f1_score.toFixed(1)}</td>
+                        <td class="pnl-positive">+${t.saved_pnl_pct.toFixed(1)}%</td>
+                        <td class="pnl-negative">-${t.missed_pnl_pct.toFixed(1)}%</td>
+                    </tr>`;
+                }).join('')}</tbody>
+            </table>
+        `;
+    }
+}
+</script>
+</body>
+</html>

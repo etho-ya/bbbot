@@ -1,0 +1,53 @@
+[Unit]
+Description=Trading Brain — Execution Engine (VPS, the hands)
+Documentation=https://internal.wiki/entities/execution-engine
+After=network-online.target
+Wants=network-online.target
+# NATS data-layer must be reachable over the Hysteria2 tunnel; the tunnel
+# service is managed separately and restarted independently. We do not hard-
+# require it here because the engine is designed to reconnect indefinitely.
+
+[Service]
+Type=simple
+User=execution
+Group=execution
+WorkingDirectory=/opt/execution-engine
+ExecStart=/opt/execution-engine/bin/engine -config /etc/execution-engine/config.yaml
+
+# Secrets — provisioned by Ansible from Vault / SOPS-age. Mode 0400, owned by
+# the execution user. NEVER commit real values.
+Environment=HOME=/var/lib/execution-engine
+
+# Restart policy: restart on any non-zero exit, but back off to avoid crash
+# loops hammering NATS/Bybit if something is fundamentally wrong.
+Restart=on-failure
+RestartSec=5s
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/execution-engine
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+
+# Graceful shutdown — SIGTERM triggers cancellation of the root context; the
+# process should exit within a second (see main.go shutdown path).
+KillSignal=SIGTERM
+TimeoutStopSec=10s
+
+# Logging: slog → stdout → journald
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

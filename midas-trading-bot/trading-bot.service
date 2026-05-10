@@ -1,0 +1,17 @@
+[Unit]
+Description=Bybit Trading Bot
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/trading-bot/trading-bot
+Environment="PATH=/opt/trading-bot/trading-bot/venv/bin"
+ExecStart=/opt/trading-bot/trading-bot/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=10
+StandardOutput=append:/opt/trading-bot/trading-bot/logs/bot.log
+StandardError=append:/opt/trading-bot/trading-bot/logs/bot.log
+
+[Install]
+WantedBy=multi-user.target

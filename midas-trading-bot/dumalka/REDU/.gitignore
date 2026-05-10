@@ -1,0 +1,91 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# ── Virtual Environment ──
+venv/
+.venv/
+env/
+
+# ── Database ──
+*.db
+*.sqlite3
+data/
+
+# ── Archives & Backups ──
+*.tar.gz
+*.zip
+backups/
+backup_*.sql.gz
+src_backup_*/
+docs/archive/
+full_update.tar.gz
+main_fix.tar.gz
+risk_engine_src.tar.gz
+src.tar.gz
+static.tar.gz
+update.tar.gz
+
+# ── Logs ──
+*.log
+logs/
+install.log
+
+# ── Large exports ──
+*.json
+!package.json
+
+# ── IDE ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── System ──
+.DS_Store
+Thumbs.db
+
+# ── Sensitive ──
+.env
+*.env
+config_local.py
+
+# ── Antigravity / Agent directories ──
+antigravity-kit/
+.gemini/
+.agents/
+
+# ── Legacy root-level duplicates ──
+/analyze_bot_trades.py
+/analyze_sl.py
+/benchmark.py
+/bybit.py
+/clean_db.py
+/clean_db_2.py
+/config.py
+/db.py
+/import_bot_logs.py
+/main.py
+/models.py
+/position_tracker.py
+/scoring.py
+/stress_test.py
+/upload_docs_to_openmemory.py
+/__init__.py
+/core/
+/static/
+/signals_snap.db
+/tg_export_report_group_result.json
+
+# Sanitization artifacts
+*.bak
+*.bak2
+sanitize_for_git.sh
+fix_commit.sh

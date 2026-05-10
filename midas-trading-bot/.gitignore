@@ -1,0 +1,16 @@
+.env
+.env.*
+*.session
+session_data/
+session_backup/
+logs/
+dumalka_uploads/
+data/
+__pycache__/
+*.pyc
+*.bak
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+*.db

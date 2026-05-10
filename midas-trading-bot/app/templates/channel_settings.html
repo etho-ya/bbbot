@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Настройка фильтра - {{ channel.title }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/2544/2544131.png">
+</head>
+
+<body>
+    <div class="container" style="max-width: 600px; margin-top: 50px;">
+        <header>
+            <div class="brand">
+                <h1>Настройка фильтра</h1>
+            </div>
+            <a href="/" class="btn-secondary" style="text-decoration: none;">← Назад</a>
+        </header>
+
+        <section class="settings-card card">
+            <div class="settings-header" style="margin-bottom: 24px;">
+                <h2 style="font-size: 20px; color: var(--text);">{{ channel.title }}</h2>
+                <p class="text-dim">ID: {{ channel.channel_id }}</p>
+            </div>
+
+            <form action="/channel/{{ channel.channel_id }}/settings" method="post">
+                <div class="setting-item" style="flex-direction: column; align-items: flex-start; gap: 12px;">
+                    <div class="setting-info">
+                        <label style="font-size: 16px;">Ключевые слова для фильтрации</label>
+                        <p style="font-size: 13px; color: var(--text-dim); margin-top: 4px;">
+                            Бот будет обрабатывать сообщение, только если оно содержит <b>хотя бы одно</b> из этих слов.
+                            Разделяйте слова запятыми. Оставьте пустым, чтобы принимать все сообщения.
+                        </p>
+                    </div>
+                    <div class="setting-input" style="width: 100%;">
+                        <input type="text" name="keywords" class="form-input"
+                            value="{{ channel.signal_keywords or '' }}" placeholder="Например: #BINANCE, LONG, SHORT"
+                            style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: white;">
+                    </div>
+                </div>
+
+                <div class="info-alert"
+                    style="background: rgba(var(--primary-rgb), 0.1); border-left: 4px solid var(--primary); padding: 16px; border-radius: 8px; margin: 24px 0;">
+                    <p style="font-size: 13px; color: var(--text);">
+                        💡 <b>Подсказка:</b> По умолчанию бот уже умеет распознавать стандартные торговые сигналы.
+                        Фильтр нужен только если вы хотите ограничить бота конкретными монетами или типами сделок.
+                    </p>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end;">
+                    <button type="submit" class="btn-primary" style="padding: 12px 24px;">💾 Сохранить
+                        настройки</button>
+                </div>
+            </form>
+        </section>
+    </div>
+</body>
+
+</html>
