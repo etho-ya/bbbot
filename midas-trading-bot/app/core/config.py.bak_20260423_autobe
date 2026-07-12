@@ -1,0 +1,87 @@
+from pathlib import Path
+from pydantic_settings import BaseSettings
+from typing import Optional
+
+# Project root (midas-trading-bot) for session file path
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+class Settings(BaseSettings):
+    # DATABASE
+    DATABASE_URL: str
+
+    # TELEGRAM (user session -- reads signals AND sends notifications)
+    TELEGRAM_API_ID: int
+    TELEGRAM_API_HASH: str
+    TELEGRAM_SESSION_NAME: str
+    TELEGRAM_PHONE: Optional[str] = None
+    TELEGRAM_SESSION_DIR: Optional[str] = None
+    TELEGRAM_PROXY: Optional[str] = None  # SOCKS5 proxy "host:port" for Telegram
+
+    # Signal source bot (which bot to listen to)
+    SIGNAL_BOT_ID: Optional[str] = None
+    SIGNAL_BOT_USERNAME: Optional[str] = None
+
+    # Chat where notifications are sent (via the same Telethon account)
+    TELEGRAM_NOTIFY_CHAT_ID: Optional[str] = None
+
+    # OPENROUTER LLM
+    OPENROUTER_API_KEY: Optional[str] = None
+    OPENROUTER_MODEL: str = "qwen/qwen3-coder:free"
+    LLM_VALIDATION_ENABLED: bool = False
+    LLM_ENABLED: bool = True
+
+    # RISK ENGINE
+    RISK_ENGINE_ENABLED: bool = True
+    RE_REPORT_CHAT_ID: str = "@uebot_report"
+    RE_WEBHOOK_SECRET: str = ""
+    RE_APPROVAL_TIMEOUT: int = 300  # seconds
+
+    RE_URL: str = "http://100.117.168.63:8000"
+
+
+    # BYBIT
+    BYBIT_API_KEY: str
+    BYBIT_API_SECRET: str
+    BYBIT_TESTNET: bool = False
+
+    # TRADE
+    DEPOSIT_PERCENT: float = 10.0
+    DEFAULT_LEVERAGE: int = 20
+    MAX_PRICE_DEVIATION: float = 1.0
+    DEFAULT_STOP_LOSS_PERCENT: float = 10.0
+    MAX_OPEN_POSITIONS: int = 10
+    MAX_DAILY_LOSS_PERCENT: float = 15.0
+
+    # SECURITY
+    ENCRYPTION_KEY: str = "encryption_key_32_bytes_needed_"
+
+    # DUMALKA (Risk Engine position management)
+    DUMALKA_MODE: str = "active"  # off / shadow / active
+    DUMALKA_TOKEN: str = ""  # Shared secret for auth
+    # Dumalka context bundles (binary + docs) — POST /dumalka/context-upload
+    DUMALKA_UPLOAD_DIR: Optional[str] = None  # default: <project>/dumalka_uploads
+    DUMALKA_UPLOAD_MAX_BINARY_MB: int = 64
+    DUMALKA_UPLOAD_MAX_TEXT_MB: int = 8
+
+    # LOGGING
+    LOG_LEVEL: str = "INFO"
+
+    class Config:
+        env_file = ".env"
+
+
+settings = Settings()
+
+
+def get_dumalka_upload_root() -> Path:
+    if settings.DUMALKA_UPLOAD_DIR:
+        return Path(settings.DUMALKA_UPLOAD_DIR)
+    return _PROJECT_ROOT / "dumalka_uploads"
+
+
+def get_telegram_session_path() -> str:
+    """Absolute path to Telethon session file (same for create_session and app)."""
+    if settings.TELEGRAM_SESSION_DIR:
+        return str(Path(settings.TELEGRAM_SESSION_DIR) / settings.TELEGRAM_SESSION_NAME)
+    return str(_PROJECT_ROOT / settings.TELEGRAM_SESSION_NAME)

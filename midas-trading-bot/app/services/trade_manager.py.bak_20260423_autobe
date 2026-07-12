@@ -1,0 +1,1137 @@
+import uuid
+import asyncio
+import math
+import httpx
+from datetime import datetime, timedelta
+from typing import Optional, Dict, List
+
+from sqlalchemy import select, func
+
+from app.models.trade_state import TradeState, TradeSide, TradeStage
+from app.services.bybit_client import bybit_client
+from app.services.telegram_notifier import notifier
+from app.core.logger import logger
+from app.core.config import settings
+from app.models.db_models import TradeDB, SignalDB, UserDB, SettingsDB
+from app.core.database import async_session, engine
+from app.core.bot_state import bot_state
+from app.core.security import decrypt_key
+
+
+_RE_DEDUP_EVENTS = frozenset({
+    "tp1_hit", "tp2_hit", "tp3_hit",
+    "sl_hit", "full_close", "dumalka_close", "manual_close",
+    "flip_close", "timeout", "apollo_full_exit", "zone_full_exit",
+    "e_pnl_full_exit", "bot_sync_desync",
+})
+
+
+class TradeManager:
+    def __init__(self):
+        self.active_trades: Dict[str, TradeState] = {}
+        self._symbol_locks: Dict[str, asyncio.Lock] = {}
+        self._re_events_sent: Dict[str, set] = {}  # signal_hash → {events already sent}
+
+    async def _fetch_closed_pnl(
+        self, symbol: str, trade: TradeState,
+        api_key: str, api_secret: str, testnet: bool,
+        retries: int = 3, delays: tuple = (1.0, 2.0, 3.0),
+    ) -> tuple:
+        """Fetch closedPnl from Bybit with retries. Returns (pnl, exit_price) or (None, None)."""
+        trade_open_ts = int(trade.created_at.timestamp() * 1000)
+        for attempt in range(retries):
+            await asyncio.sleep(delays[attempt] if attempt < len(delays) else delays[-1])
+            closed_records = await bybit_client.get_closed_pnl(
+                symbol, api_key, api_secret, testnet, limit=5
+            )
+            if closed_records:
+                for rec in closed_records:
+                    rec_ts = int(rec.get("createdTime", "0"))
+                    if rec_ts >= trade_open_ts:
+                        return float(rec.get("closedPnl", "0")), float(rec.get("avgExitPrice", "0"))
+            if attempt < retries - 1:
+                logger.debug(f"closedPnl not ready for {symbol}, retry {attempt + 2}/{retries}")
+        return None, None
+
+    async def init_db(self):
+        from app.models.db_models import Base
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    async def get_db_settings(self, user_id: int) -> Optional[SettingsDB]:
+        async with async_session() as session:
+            result = await session.execute(select(SettingsDB).where(SettingsDB.user_id == user_id))
+            return result.scalar_one_or_none()
+
+    async def get_user_credentials(self, user_id: int):
+        async with async_session() as session:
+            result = await session.execute(select(UserDB).where(UserDB.id == user_id))
+            user = result.scalar_one_or_none()
+            if not user or not user.bybit_api_key or not user.bybit_api_secret:
+                return None, None, False
+            return decrypt_key(user.bybit_api_key), decrypt_key(user.bybit_api_secret), user.is_testnet
+
+    def format_precision(self, value: float, step: float) -> str:
+        if not step or step == 0:
+            return str(int(value))
+        step_str = format(step, '.10f').rstrip('0').rstrip('.')
+        precision = len(step_str.split('.')[1]) if '.' in step_str else 0
+        rounded_val = math.floor(round(value / step, 10)) * step
+        return format(rounded_val, f'.{precision}f')
+
+    def get_open_positions_for_llm(self) -> List[Dict]:
+        positions = []
+        for t in list(self.active_trades.values()):
+            positions.append({
+                "symbol": t.symbol,
+                "side": "LONG" if t.side == TradeSide.LONG else "SHORT",
+                "entry_price": t.entry_price,
+                "tp1": t.tp1, "tp2": t.tp2, "tp3": t.tp3,
+                "sl": t.sl,
+                "stage": t.stage.name,
+            })
+        return positions
+
+    async def get_positions_for_re(self) -> List[Dict]:
+        """Build positions list in RE-compatible format for GET /dumalka/positions.
+
+        v0.10.4 (2026-04-21): Parallel price fetch via asyncio.gather + per-call
+        timeout. Previously sequential await inside for-loop caused 7 positions ×
+        ~210ms = ~1.5s latency, and single-call tail-latency at Bybit (>10s) would
+        blow the whole endpoint past RE's 10s timeout, triggering false
+        bot_sync_failed alerts.
+        """
+        active = [
+            t for t in list(self.active_trades.values())
+            if t.stage < TradeStage.CLOSED
+        ]
+        if not active:
+            return []
+
+        async def _safe_price(symbol: str) -> Optional[float]:
+            try:
+                return await asyncio.wait_for(
+                    bybit_client.get_current_price(symbol), timeout=2.0
+                )
+            except (asyncio.TimeoutError, Exception) as e:
+                logger.warning(f"get_positions_for_re: price fetch failed for {symbol}: {e}")
+                return None
+
+        prices = await asyncio.gather(
+            *[_safe_price(t.symbol) for t in active], return_exceptions=False
+        )
+
+        positions = []
+        for t, current_price in zip(active, prices):
+            side_str = "long" if t.side == TradeSide.LONG else "short"
+            size_contracts = t.size / t.entry_price if t.entry_price > 0 else 0.0
+            pnl_pct = self.calculate_pnl_pct(t, current_price) if current_price else 0.0
+            final_tp = t.tp3 if t.tp3 and t.tp3 != t.tp1 else (t.tp2 if t.tp2 and t.tp2 != t.tp1 else t.tp1)
+            positions.append({
+                "symbol": t.symbol,
+                "side": side_str,
+                "entry_price": t.entry_price,
+                "size": round(size_contracts, 8),
+                "current_price": current_price or t.entry_price,
+                "unrealized_pnl_pct": pnl_pct,
+                "stop_loss": t.sl,
+                "take_profit": final_tp,
+                "opened_at": t.created_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "signal_hash": t.signal_hash or "",
+            })
+        return positions
+
+    # ─── RE HTTP callback ─────────────────────────────────────────────
+
+    def _mark_re_event(self, signal_hash: str, event: str) -> bool:
+        """Return True if this (hash, event) is new and should be sent.
+        For dedup-protected events, returns False on duplicates."""
+        if not signal_hash or event not in _RE_DEDUP_EVENTS:
+            return True
+        sent = self._re_events_sent.setdefault(signal_hash, set())
+        if event in sent:
+            logger.debug(f"RE dedup: {event} {signal_hash[:12]} already sent, skipping")
+            return False
+        sent.add(event)
+        if len(self._re_events_sent) > 500:
+            oldest = list(self._re_events_sent.keys())[:250]
+            for k in oldest:
+                del self._re_events_sent[k]
+        return True
+
+    async def notify_risk_engine(
+        self, symbol: str, side: str, event: str, price: float,
+        pnl_pct: float, signal_hash: str, size_remaining: float = 0.0,
+        comment: str = "",
+    ):
+        """HTTP POST trade outcome to Risk Engine /trade-outcome."""
+        if not settings.RE_URL:
+            return
+        if not self._mark_re_event(signal_hash, event):
+            return
+        payload = {
+            "hash": signal_hash,
+            "event": event,
+            "symbol": symbol,
+            "side": side,
+            "price": price,
+            "pnl_pct": round(pnl_pct, 2),
+            "size_remaining": size_remaining,
+        }
+        if comment:
+            payload["comment"] = comment
+        try:
+            async with httpx.AsyncClient(timeout=5.0, verify=False) as client:
+                resp = await client.post(
+                    f"{settings.RE_URL}/trade-outcome",
+                    json=payload,
+                    headers={"X-Webhook-Secret": settings.RE_WEBHOOK_SECRET},
+                )
+                if resp.status_code == 200:
+                    logger.info(f"RE callback: {event} {symbol} → 200 OK")
+                else:
+                    logger.warning(f"RE callback: {event} {symbol} → HTTP {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            logger.warning(f"RE callback: {event} {symbol} failed: {e}")
+
+    # ─── Kill Switch checks ───────────────────────────────────────────
+
+    async def check_max_positions(self, user_id: int, db_settings: SettingsDB) -> bool:
+        max_pos = db_settings.max_open_positions if db_settings else settings.MAX_OPEN_POSITIONS
+        current = sum(1 for t in list(self.active_trades.values()) if t.user_id == user_id)
+        if current >= max_pos:
+            logger.warning(f"KillSwitch [User {user_id}]: Max positions reached ({current}/{max_pos})")
+            return False
+        return True
+
+    async def check_daily_loss(self, user_id: int, db_settings: SettingsDB, balance: float) -> bool:
+        max_loss_pct = db_settings.max_daily_loss_percent if db_settings else settings.MAX_DAILY_LOSS_PERCENT
+        now = datetime.utcnow()
+        
+        # Reset at 11:30 MSK (08:30 UTC)
+        reset_hour, reset_minute = 8, 30
+        if now.hour > reset_hour or (now.hour == reset_hour and now.minute >= reset_minute):
+            today_start = now.replace(hour=reset_hour, minute=reset_minute, second=0, microsecond=0)
+        else:
+            today_start = (now - timedelta(days=1)).replace(hour=reset_hour, minute=reset_minute, second=0, microsecond=0)
+        
+        # Count loss from the beginning of today, 
+        # OR from manual reset time if bot was restarted TODAY.
+        if bot_state.loss_reset_at and bot_state.loss_reset_at > today_start:
+            loss_window_start = bot_state.loss_reset_at
+        else:
+            loss_window_start = today_start
+
+        async with async_session() as session:
+            result = await session.execute(
+                select(func.coalesce(func.sum(TradeDB.profit_loss), 0.0))
+                .where(
+                    TradeDB.user_id == user_id,
+                    TradeDB.status == "closed",
+                    TradeDB.closed_at >= loss_window_start,
+                )
+            )
+            daily_pnl = result.scalar() or 0.0
+
+        if balance > 0 and daily_pnl < 0:
+            loss_pct = abs(daily_pnl) / balance * 100
+            if loss_pct >= max_loss_pct:
+                logger.warning(f"KillSwitch [User {user_id}]: Daily loss {loss_pct:.1f}% >= limit {max_loss_pct}%")
+                await notifier.notify_kill_switch(
+                    f"Дневной убыток {loss_pct:.1f}% превысил лимит {max_loss_pct}%"
+                )
+                return False
+        return True
+
+    # ─── Open Trade ───────────────────────────────────────────────────
+
+    async def open_trade(
+        self, user_id: int, signal: dict, signal_id: int,
+        re_score: float = None, signal_hash: str = None,
+        re_recommendation: str = "approve",
+        conviction_size_usd: float = None,
+        auto_be_price: float = None,
+        auto_be_trigger: float = None,
+    ) -> bool:
+        if not bot_state.is_running:
+            logger.warning(f"Trade [User {user_id}]: Bot not running, skipping")
+            return False
+
+        symbol = signal["symbol"]
+        logger.info(f"Trade [User {user_id}]: Opening {symbol} {signal['side']} (Signal ID: {signal_id})")
+
+        api_key, api_secret, testnet = await self.get_user_credentials(user_id)
+        if not api_key:
+            logger.error(f"Trade [User {user_id}]: API keys not configured")
+            return False
+
+        if not await bybit_client.is_symbol_available(symbol):
+            msg = f"Trade [User {user_id}]: {symbol} not available for trading"
+            logger.error(msg)
+            await notifier.notify_error(msg)
+            return False
+
+        db_settings = await self.get_db_settings(user_id)
+        deposit_pct = db_settings.deposit_percent if db_settings else settings.DEPOSIT_PERCENT
+        leverage = db_settings.leverage if db_settings else settings.DEFAULT_LEVERAGE
+        default_sl_pct = db_settings.default_stop_loss_percent if db_settings else settings.DEFAULT_STOP_LOSS_PERCENT
+
+        if not await self.check_max_positions(user_id, db_settings):
+            return False
+
+        bybit_client.invalidate_balance_cache(api_key)
+        balance = await bybit_client.get_wallet_balance(api_key, api_secret, testnet)
+        if balance <= 0:
+            msg = f"Trade [User {user_id}]: Insufficient balance ({balance:.2f} USDT)"
+            logger.error(msg)
+            await notifier.notify_error(msg)
+            return False
+
+        if not await self.check_daily_loss(user_id, db_settings, balance):
+            return False
+
+        current_price = await bybit_client.get_current_price(symbol)
+        if not current_price:
+            logger.error(f"Trade [User {user_id}]: Cannot get price for {symbol}")
+            return False
+
+        entry_price = current_price
+
+        symbol_info = await bybit_client.get_symbol_info(symbol)
+        if not symbol_info:
+            logger.error(f"Trade [User {user_id}]: Cannot get symbol info for {symbol}")
+            return False
+
+        qty_step = float(symbol_info.get("lotSizeFilter", {}).get("qtyStep", "1"))
+        min_qty = float(symbol_info.get("lotSizeFilter", {}).get("minOrderQty", "0"))
+        tick_size = float(symbol_info.get("priceFilter", {}).get("tickSize", "0.01"))
+
+        # ── Fixed base margin ────────────────────────────────────────
+        # Всегда заходим на $10 маржи. REDU-поля (conviction_size_usd,
+        # re_score, re_recommendation) продолжают приниматься в сигнатуре
+        # метода для совместимости с интеграцией, но игнорируются в сайзинге.
+        base_margin = 10.0
+        margin_usdt = base_margin
+        logger.info(
+            f"Trade [User {user_id}]: Fixed base margin=${margin_usdt:.2f} "
+            f"(RE inputs ignored: conviction={conviction_size_usd}, "
+            f"score={re_score}, rec={re_recommendation})"
+        )
+
+        # ── REDU Conviction Sizing (API contract v2.0) — DISABLED ───
+        # Оставлено закомментированным специально: вся логика динамического
+        # сайзинга от RE отключена по требованию. Восстанавливать при
+        # необходимости — разкомментировать блок ниже и убрать фикс выше.
+        #
+        # max_margin = balance * 0.80
+        # if conviction_size_usd is not None and conviction_size_usd > 0:
+        #     if conviction_size_usd > max_margin:
+        #         logger.warning(
+        #             f"Trade [User {user_id}]: RE conviction ${conviction_size_usd:.2f} "
+        #             f"exceeds 80% balance (${max_margin:.2f}), capping"
+        #         )
+        #         conviction_size_usd = max_margin
+        #     margin_usdt = conviction_size_usd
+        #     logger.info(
+        #         f"Trade [User {user_id}]: RE conviction sizing: "
+        #         f"margin=${margin_usdt:.2f} (rec={re_recommendation})"
+        #     )
+        # elif re_score is not None and re_score > 0:
+        #     if re_recommendation == "reduce":
+        #         score_mult = max(0.3, min(0.7, re_score))
+        #     else:
+        #         score_mult = max(0.7, min(1.0, re_score))
+        #     margin_usdt = base_margin * score_mult
+        #     logger.info(
+        #         f"Trade [User {user_id}]: RE fallback sizing: "
+        #         f"score={re_score:.2f} rec={re_recommendation} "
+        #         f"→ mult={score_mult:.2f}x margin=${margin_usdt:.2f}"
+        #     )
+        # else:
+        #     margin_usdt = base_margin
+        #     logger.info(f"Trade [User {user_id}]: No RE data, base margin=${margin_usdt:.2f}")
+
+        if margin_usdt < 0.01:
+            logger.warning(f"Trade [User {user_id}]: Margin too small ({margin_usdt:.4f} USDT)")
+            return False
+
+        max_leverage = await bybit_client.get_max_leverage(symbol)
+        if max_leverage and leverage > max_leverage:
+            leverage = max_leverage
+
+        size_usdt = margin_usdt * leverage
+        qty_raw = size_usdt / entry_price
+        qty = self.format_precision(qty_raw, qty_step)
+
+        # ── Minimum viable order escalation ──────────────────────────────
+        # If conviction sizing produced a qty below exchange minimums,
+        # escalate to the minimum viable size (if affordable).
+        min_order_value = 5.5  # slightly above Bybit $5 min for safety
+        escalated = False
+
+        if float(qty) < min_qty or float(qty) <= 0 or (float(qty) * entry_price < min_order_value):
+            min_qty_for_value = min_order_value / entry_price if entry_price > 0 else min_qty
+            needed_qty = max(min_qty, min_qty_for_value)
+            needed_qty_str = self.format_precision(needed_qty + qty_step, qty_step)
+            needed_margin = (float(needed_qty_str) * entry_price) / leverage if leverage > 0 else float('inf')
+
+            if needed_margin <= base_margin * 0.5:
+                qty = needed_qty_str
+                margin_usdt = needed_margin
+                size_usdt = margin_usdt * leverage
+                escalated = True
+                logger.warning(
+                    f"Trade [User {user_id}]: Order escalated to min viable: "
+                    f"qty={qty} margin=${margin_usdt:.2f} (base_margin=${base_margin:.2f})"
+                )
+            else:
+                msg = (
+                    f"Trade [User {user_id}]: Cannot meet Bybit minimums for {symbol} "
+                    f"(need margin=${needed_margin:.2f}, base=${base_margin:.2f})"
+                )
+                logger.error(msg)
+                await notifier.notify_error(
+                    f"Сигнал {symbol} пропущен: слишком маленький размер позиции "
+                    f"(нужно ${needed_margin:.2f}, доступно ${base_margin:.2f})"
+                )
+                return False
+
+        tp1 = float(signal["tp1"])
+        tp2 = float(signal.get("tp2", signal["tp1"]))
+        tp3 = float(signal.get("tp3", signal["tp1"]))
+
+        sl_pct = default_sl_pct / 100.0
+        safe_sl_long = entry_price * (1 - sl_pct)
+        safe_sl_short = entry_price * (1 + sl_pct)
+
+        if signal["sl"] == 0:
+            safe_sl = safe_sl_long if signal["direction"] == "LONG" else safe_sl_short
+            sl = float(self.format_precision(safe_sl, tick_size))
+            logger.warning(f"Trade [User {user_id}]: No SL in signal, using default: {sl}")
+        else:
+            is_valid_sl = True
+            if signal["direction"] == "LONG" and signal["sl"] >= entry_price:
+                is_valid_sl = False
+            elif signal["direction"] == "SHORT" and signal["sl"] <= entry_price:
+                is_valid_sl = False
+
+            if not is_valid_sl:
+                safe_sl = safe_sl_long if signal["direction"] == "LONG" else safe_sl_short
+                sl = float(self.format_precision(safe_sl, tick_size))
+                logger.warning(f"Trade [User {user_id}]: Invalid SL {signal['sl']} for {signal['direction']}. Override: {sl}")
+            else:
+                sl = float(self.format_precision(signal["sl"], tick_size))
+
+        # === CHECK FOR EXISTING POSITION (under per-symbol lock) ===
+        lock = self._symbol_locks.setdefault(symbol, asyncio.Lock())
+        async with lock:
+            return await self._open_trade_locked(
+                user_id, signal, signal_id, signal_hash,
+                symbol, entry_price, tp1, tp2, tp3, sl, qty, leverage,
+                size_usdt, margin_usdt, tick_size, auto_be_price, auto_be_trigger,
+                api_key, api_secret, testnet,
+            )
+
+    async def _open_trade_locked(
+        self, user_id, signal, signal_id, signal_hash,
+        symbol, entry_price, tp1, tp2, tp3, sl, qty, leverage,
+        size_usdt, margin_usdt, tick_size, auto_be_price, auto_be_trigger,
+        api_key, api_secret, testnet,
+    ) -> bool:
+        existing_trade = None
+        existing_trade_id = None
+        opposite_trade = None
+        opposite_trade_id = None
+        for tid, t in list(self.active_trades.items()):
+            if t.symbol == symbol and t.user_id == user_id and t.stage < TradeStage.CLOSED:
+                if t.side.value == signal["side"]:
+                    existing_trade = t
+                    existing_trade_id = tid
+                    break
+                else:
+                    opposite_trade = t
+                    opposite_trade_id = tid
+
+        # --- Opposite-direction: close old position first, then open new ---
+        if opposite_trade:
+            logger.info(
+                f"Trade [User {user_id}]: Opposite signal for {symbol} "
+                f"({opposite_trade.side.value}→{signal['side']}), closing old position first"
+            )
+            try:
+                close_ok = await bybit_client.close_position_full(
+                    symbol, opposite_trade.side.value, api_key, api_secret, testnet
+                )
+                if close_ok:
+                    pnl, exit_price = await self._fetch_closed_pnl(
+                        symbol, opposite_trade, api_key, api_secret, testnet
+                    )
+                    close_price = exit_price or await bybit_client.get_current_price(symbol) or opposite_trade.entry_price
+                    if pnl is None:
+                        pnl = self.calculate_pnl(opposite_trade, close_price)
+                        logger.warning(f"Trade [User {user_id}]: closedPnl unavailable for flipped {symbol}, using estimate")
+                    pnl_pct = (pnl / opposite_trade.size) * 100 if opposite_trade.size > 0 else 0.0
+                    opposite_trade.stage = TradeStage.CLOSED
+                    await self.save_trade(opposite_trade, status="closed", profit_loss=pnl)
+                    if opposite_trade_id in self.active_trades:
+                        del self.active_trades[opposite_trade_id]
+                    old_side = "long" if opposite_trade.side == TradeSide.LONG else "short"
+                    await self.notify_risk_engine(
+                        symbol=symbol, side=old_side, event="flip_close",
+                        price=close_price, pnl_pct=pnl_pct,
+                        signal_hash=opposite_trade.signal_hash or "",
+                        comment=f"Flipped to {signal['side']}",
+                    )
+                    await notifier.notify_trade_closed(
+                        symbol, opposite_trade.side.value, pnl,
+                        f"Flip: new {signal['side']} signal",
+                        close_price=close_price, entry_price=opposite_trade.entry_price,
+                        order_id=opposite_trade.position_id,
+                        signal_hash=opposite_trade.signal_hash,
+                    )
+                    logger.info(
+                        f"Trade [User {user_id}]: FLIP CLOSE {symbol} {opposite_trade.side.value} "
+                        f"PnL={pnl:.4f} USDT ({pnl_pct:.2f}%)"
+                    )
+                else:
+                    logger.error(f"Trade [User {user_id}]: Failed to close opposite {symbol}, aborting flip")
+                    return False
+            except Exception as e:
+                logger.error(f"Trade [User {user_id}]: Flip close error for {symbol}: {e}", exc_info=True)
+                return False
+
+        # --- Same-direction: merge into existing position ---
+        if existing_trade:
+            logger.info(
+                f"Trade [User {user_id}]: Existing position for {symbol} found "
+                f"(trade_id={existing_trade_id}), merging instead of duplicating"
+            )
+            try:
+                order_id = await bybit_client.open_position(
+                    symbol=symbol, side=signal["side"], qty=qty,
+                    leverage=leverage,
+                    api_key=api_key, api_secret=api_secret, testnet=testnet,
+                )
+                if not order_id:
+                    logger.error(f"Trade [User {user_id}]: Merge order failed for {symbol}")
+                    return False
+
+                await asyncio.sleep(0.5)
+                pos_info = await bybit_client.get_position_info(symbol, api_key, api_secret, testnet)
+                if pos_info and float(pos_info.get("avgPrice", "0")) > 0:
+                    new_avg_entry = float(pos_info["avgPrice"])
+                    new_total_size = float(pos_info.get("size", "0")) * new_avg_entry
+                else:
+                    new_avg_entry = existing_trade.entry_price
+                    new_total_size = existing_trade.size + size_usdt
+
+                old_entry = existing_trade.entry_price
+                existing_trade.entry_price = new_avg_entry
+                existing_trade.size = new_total_size
+                existing_trade.tp1 = tp1
+                existing_trade.tp2 = tp2
+                existing_trade.tp3 = tp3
+                existing_trade.sl = sl
+                if auto_be_price:
+                    existing_trade.auto_be_price = auto_be_price
+                if auto_be_trigger:
+                    existing_trade.auto_be_trigger = auto_be_trigger
+
+                sl_str = self.format_precision(sl, tick_size)
+                final_tp = tp3 if tp3 > 0 and tp3 != tp1 else (tp2 if tp2 > 0 and tp2 != tp1 else tp1)
+                tp_str = self.format_precision(final_tp, tick_size)
+                try:
+                    await bybit_client.set_trading_stop_combined(
+                        symbol, tp_str, sl_str, api_key, api_secret, testnet
+                    )
+                except Exception as e:
+                    logger.error(f"Trade [User {user_id}]: Error updating SL/TP on merge for {symbol}: {e}")
+
+                await self.save_trade(existing_trade)
+                side_str = "long" if signal["side"] == "Buy" else "short"
+                await self.notify_risk_engine(
+                    symbol=symbol, side=side_str, event="position_increased",
+                    price=new_avg_entry, pnl_pct=0.0,
+                    signal_hash=existing_trade.signal_hash or "", size_remaining=float(qty),
+                )
+                await notifier.notify_trade_opened(
+                    symbol, signal["side"], new_avg_entry, new_total_size, leverage,
+                    order_id=order_id, signal_hash=existing_trade.signal_hash,
+                )
+                logger.info(
+                    f"Trade [User {user_id}]: MERGED {symbol} | "
+                    f"entry {old_entry:.6f}→{new_avg_entry:.6f} | "
+                    f"size→${new_total_size:.2f} | SL={sl} TP1={tp1}"
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Trade [User {user_id}]: Merge error for {symbol}: {e}", exc_info=True)
+                return False
+
+        # === MARKET ORDER ENTRY ===
+        try:
+            logger.info(f"Trade [User {user_id}]: MARKET {symbol} {signal['side']} qty={qty} lev={leverage}")
+            order_id = await bybit_client.open_position(
+                symbol=symbol, side=signal["side"], qty=qty,
+                leverage=leverage,
+                api_key=api_key, api_secret=api_secret, testnet=testnet,
+            )
+        except Exception as e:
+            logger.error(f"Trade [User {user_id}]: Order error for {symbol}: {e}")
+            return False
+
+        if not order_id:
+            logger.error(f"Trade [User {user_id}]: No order ID returned for {symbol}")
+            return False
+
+        logger.info(f"Trade [User {user_id}]: Order placed! ID = {order_id}")
+
+        # Fetch actual fill price from Bybit instead of using pre-order ticker
+        await asyncio.sleep(0.5)
+        pos_info = await bybit_client.get_position_info(symbol, api_key, api_secret, testnet)
+        if pos_info and float(pos_info.get("avgPrice", "0")) > 0:
+            real_entry = float(pos_info["avgPrice"])
+            if abs(real_entry - entry_price) / entry_price > 0.001:
+                logger.info(f"Trade [User {user_id}]: Entry adjusted: ticker={entry_price} → fill={real_entry}")
+            entry_price = real_entry
+
+        # === SET SL + TP3 natively on Bybit ===
+        sl_str = self.format_precision(sl, tick_size)
+        final_tp = tp3 if tp3 > 0 and tp3 != tp1 else (tp2 if tp2 > 0 and tp2 != tp1 else tp1)
+        tp_str = self.format_precision(final_tp, tick_size)
+        tp_sl_ok = await bybit_client.set_trading_stop_combined(
+            symbol, tp_str, sl_str, api_key, api_secret, testnet
+        )
+        if tp_sl_ok:
+            logger.info(f"Trade [User {user_id}]: SL={sl_str} TP={tp_str} (TP3) set on Bybit for {symbol}")
+        else:
+            logger.error(
+                f"Trade [User {user_id}]: FAILED to set SL={sl_str} TP={tp_str} for {symbol}. "
+                f"Position opened WITHOUT TP/SL protection!"
+            )
+
+        trailing_pct = signal.get("trailing_stop_pct")
+
+        trade_id = str(uuid.uuid4())
+        trade = TradeState(
+            id=trade_id,
+            user_id=user_id,
+            symbol=symbol,
+            side=TradeSide(signal["side"]),
+            entry_price=entry_price,
+            size=size_usdt,
+            leverage=leverage,
+            tp1=tp1,
+            tp2=tp2,
+            tp3=tp3,
+            sl=sl,
+            trailing_stop_pct=trailing_pct,
+            signal_hash=signal_hash,
+            stage=TradeStage.OPEN,
+            position_id=order_id,
+            auto_be_price=auto_be_price,
+            auto_be_trigger=auto_be_trigger,
+        )
+
+        async with async_session() as session:
+            db_trade = TradeDB(
+                **trade.to_dict(),
+                signal_id=signal_id,
+                status="active",
+            )
+            session.add(db_trade)
+            await session.commit()
+
+        self.active_trades[trade_id] = trade
+        logger.info(f"Trade [User {user_id}]: OPEN {symbol} {trade.side.value} @ {entry_price} | SL={sl} TP1={tp1} TP2={tp2} TP3={tp3}")
+
+        await self.broadcast_user_stats(user_id)
+        await notifier.notify_trade_opened(
+            symbol, signal["side"], entry_price, size_usdt, leverage,
+            order_id=order_id, signal_hash=signal_hash,
+        )
+        side_str = "long" if signal["side"] == "Buy" else "short"
+        await self.notify_risk_engine(
+            symbol=symbol, side=side_str, event="open",
+            price=entry_price, pnl_pct=0.0,
+            signal_hash=signal_hash or "", size_remaining=float(qty),
+            comment=f"Filled at {entry_price}, margin=${margin_usdt:.2f}, lev={leverage}x",
+        )
+
+        asyncio.create_task(self.monitor_trade(trade_id))
+        return True
+
+    # ─── Auxiliary signal handling ────────────────────────────────────
+
+    async def handle_auxiliary_action(self, action: str, symbol: str, reason: str):
+        if action == "do_nothing":
+            return
+
+        matching_trades = [
+            (tid, t) for tid, t in list(self.active_trades.items())
+            if t.symbol == symbol
+        ]
+        if not matching_trades:
+            logger.info(f"Auxiliary: No open trades for {symbol}, ignoring '{action}'")
+            return
+
+        for trade_id, trade in matching_trades:
+            api_key, api_secret, testnet = await self.get_user_credentials(trade.user_id)
+            if not api_key:
+                continue
+
+            if action == "close":
+                logger.info(f"Auxiliary: Closing {symbol} (reason: {reason})")
+                close_result = await bybit_client.close_position_full(
+                    symbol, trade.side.value, api_key, api_secret, testnet
+                )
+                if close_result:
+                    pnl, exit_price = await self._fetch_closed_pnl(
+                        symbol, trade, api_key, api_secret, testnet
+                    )
+                    current_price = exit_price or await bybit_client.get_current_price(symbol) or trade.entry_price
+                    if pnl is None:
+                        pnl = self.calculate_pnl(trade, current_price)
+                        logger.warning(f"Auxiliary: Bybit closedPnl unavailable for {symbol} after retries, using estimate")
+                    pnl_pct = (pnl / trade.size) * 100 if trade.size > 0 else self.calculate_pnl_pct(trade, current_price)
+                    side_str = "long" if trade.side == TradeSide.LONG else "short"
+                    trade.stage = TradeStage.CLOSED
+                    await self.save_trade(trade, status="closed", profit_loss=pnl)
+                    if trade_id in self.active_trades:
+                        del self.active_trades[trade_id]
+                    await notifier.notify_trade_closed(
+                        symbol, trade.side.value, pnl, f"Auxiliary: {reason}",
+                        close_price=current_price, entry_price=trade.entry_price,
+                        order_id=trade.position_id, signal_hash=trade.signal_hash,
+                    )
+                    await self.notify_risk_engine(
+                        symbol=symbol, side=side_str, event="full_close",
+                        price=current_price, pnl_pct=pnl_pct,
+                        signal_hash=trade.signal_hash or "", size_remaining=0.0,
+                        comment=f"Auxiliary: {reason}",
+                    )
+                    await self.broadcast_user_stats(trade.user_id)
+
+            elif action == "tighten_sl":
+                current_price = await bybit_client.get_current_price(symbol)
+                if current_price:
+                    if trade.side == TradeSide.LONG:
+                        new_sl = trade.entry_price + (current_price - trade.entry_price) * 0.5
+                    else:
+                        new_sl = trade.entry_price - (trade.entry_price - current_price) * 0.5
+                    symbol_info = await bybit_client.get_symbol_info(symbol)
+                    tick = float(symbol_info.get("priceFilter", {}).get("tickSize", "0.01")) if symbol_info else 0.01
+                    new_sl_str = self.format_precision(new_sl, tick)
+                    await bybit_client.set_stop_loss(symbol, new_sl_str, api_key, api_secret, testnet)
+                    trade.sl = float(new_sl_str)
+                    await self.save_trade(trade)
+                    logger.info(f"Auxiliary: SL tightened to {new_sl_str} for {symbol}")
+                    await notifier.notify_auxiliary_action(symbol, action, reason)
+
+    # ─── Dumalka fallback check ────────────────────────────────────────
+
+    def _dumalka_manages_position(self) -> bool:
+        """Return True if Думалка is the exclusive position manager.
+        When active, the bot monitor only detects closures and sends
+        informational events — all SL/TP management is Dumalka's job."""
+        return settings.DUMALKA_MODE == "active"
+
+    # ─── Trade monitoring (Bybit position-based) ──────────────────────
+
+    async def _get_position_size(self, symbol: str, api_key: str, api_secret: str, testnet: bool) -> float:
+        """Get actual position size from Bybit."""
+        try:
+            client = bybit_client._get_client(api_key, api_secret, testnet)
+            resp = await bybit_client._call_api(
+                client.get_positions,
+                category="linear",
+                symbol=symbol,
+            )
+            if resp["retCode"] == 0:
+                for pos in resp["result"]["list"]:
+                    size = float(pos.get("size", "0"))
+                    if size > 0:
+                        return size
+            return 0.0
+        except Exception as e:
+            logger.error(f"Monitor: Error getting position size for {symbol}: {e}")
+            return -1.0
+
+    async def monitor_trade(self, trade_id: str):
+        """
+        Monitor logic:
+        - Detect TP1 price level → send tp1_hit event to RE.
+        - Auto SL→BE: when Dumalka active AND TP1 hit (or auto_be_trigger reached),
+          move SL to breakeven+ locally (3s polling vs RE's 30s — protects profit faster).
+        - Watch TP2 (non-Dumalka mode): move SL to breakeven, stage → TP2_REACHED.
+        - Detect position closure by Bybit (pos_size == 0): classify and notify RE first.
+        """
+        trade = self.active_trades.get(trade_id)
+        if not trade:
+            return
+        logger.info(
+            f"Monitor: Starting for {trade.symbol} | "
+            f"SL={trade.sl} TP1(watch)={trade.tp1} TP2(watch)={trade.tp2} TP3(Bybit)={trade.tp3}"
+        )
+
+        api_key, api_secret, testnet = await self.get_user_credentials(trade.user_id)
+        if not api_key:
+            return
+
+        symbol_info = await bybit_client.get_symbol_info(trade.symbol)
+        tick_size = float(symbol_info.get("priceFilter", {}).get("tickSize", "0.01")) if symbol_info else 0.01
+
+        tp1_notified = (trade.stage >= TradeStage.TP1_REACHED)
+        tp1_be_done = (trade.stage >= TradeStage.TP2_REACHED)
+
+        while trade_id in self.active_trades and trade.stage < TradeStage.CLOSED:
+            try:
+                pos_size = await self._get_position_size(trade.symbol, api_key, api_secret, testnet)
+
+                if pos_size == 0.0:
+                    if trade.stage >= TradeStage.CLOSED:
+                        logger.info(f"Monitor: {trade.symbol} already closed (by Dumalka), exiting monitor")
+                        if trade_id in self.active_trades:
+                            del self.active_trades[trade_id]
+                        break
+
+                    # If Dumalka is processing a full_close, wait for it
+                    if trade.dumalka_closing:
+                        logger.info(f"Monitor: {trade.symbol} pos_size=0 but dumalka_closing=True, waiting...")
+                        await asyncio.sleep(2)
+                        if trade.stage >= TradeStage.CLOSED:
+                            logger.info(f"Monitor: {trade.symbol} closed by Dumalka during wait, exiting")
+                            if trade_id in self.active_trades:
+                                del self.active_trades[trade_id]
+                            break
+                        # Dumalka didn't finish in time — proceed with monitor close
+
+                    pnl, exit_price = await self._fetch_closed_pnl(
+                        trade.symbol, trade, api_key, api_secret, testnet
+                    )
+                    current_price = exit_price or await bybit_client.get_current_price(trade.symbol) or trade.entry_price
+                    if pnl is None:
+                        pnl = self.calculate_pnl(trade, current_price)
+                        logger.warning(f"Monitor: Bybit closedPnl unavailable for {trade.symbol} after retries, using estimate")
+
+                    pnl_pct = (pnl / trade.size) * 100 if trade.size > 0 else self.calculate_pnl_pct(trade, current_price)
+                    trade.stage = TradeStage.CLOSED
+                    await self.save_trade(trade, status="closed", profit_loss=pnl)
+                    if trade_id in self.active_trades:
+                        del self.active_trades[trade_id]
+
+                    # Classify close event: TP3, SL, or Dumalka exit
+                    tp3 = trade.tp3 if trade.tp3 and trade.tp3 != trade.tp1 else trade.tp2
+                    closed_at_tp = (
+                        (trade.side == TradeSide.LONG and current_price >= tp3 * 0.995) or
+                        (trade.side == TradeSide.SHORT and current_price <= tp3 * 1.005)
+                    )
+                    side_str = "long" if trade.side == TradeSide.LONG else "short"
+
+                    if closed_at_tp:
+                        event = "tp3_hit"
+                    elif trade.dumalka_closing or pnl > 0:
+                        event = "dumalka_close" if trade.dumalka_closing else "manual_close"
+                    else:
+                        event = "sl_hit"
+
+                    logger.info(f"Monitor: {event} for {trade.symbol} @ {current_price}, PnL={pnl:.4f} USDT")
+
+                    await self.notify_risk_engine(
+                        symbol=trade.symbol, side=side_str, event=event,
+                        price=current_price, pnl_pct=pnl_pct,
+                        signal_hash=trade.signal_hash or "", size_remaining=0.0,
+                        comment=f"Monitor detected position closed: {event}",
+                    )
+
+                    if event == "tp3_hit":
+                        await notifier.notify_trade_closed(
+                            trade.symbol, trade.side.value, pnl, "TP3 достигнут",
+                            close_price=current_price, entry_price=trade.entry_price,
+                            order_id=trade.position_id, signal_hash=trade.signal_hash,
+                        )
+                    elif event in ("dumalka_close", "manual_close"):
+                        reason = "Думалка" if trade.dumalka_closing else "Ручное закрытие"
+                        await notifier.notify_trade_closed(
+                            trade.symbol, trade.side.value, pnl, reason,
+                            close_price=current_price, entry_price=trade.entry_price,
+                            order_id=trade.position_id, signal_hash=trade.signal_hash,
+                        )
+                    else:
+                        await notifier.notify_sl_hit(
+                            trade.symbol, trade.side.value, pnl,
+                            close_price=current_price, entry_price=trade.entry_price,
+                            order_id=trade.position_id, signal_hash=trade.signal_hash,
+                        )
+
+                    await self.broadcast_user_stats(trade.user_id)
+                    break
+
+                if pos_size < 0:
+                    await asyncio.sleep(5)
+                    continue
+
+                current_price = await bybit_client.get_current_price(trade.symbol)
+                if not current_price:
+                    await asyncio.sleep(3)
+                    continue
+
+                side_str = "long" if trade.side == TradeSide.LONG else "short"
+
+                # === TP1 detection (informational — no SL move) ===
+                if not tp1_notified and trade.stage == TradeStage.OPEN:
+                    tp1_hit = (
+                        (trade.side == TradeSide.LONG and current_price >= trade.tp1) or
+                        (trade.side == TradeSide.SHORT and current_price <= trade.tp1)
+                    )
+                    if tp1_hit:
+                        tp1_notified = True
+                        trade.stage = TradeStage.TP1_REACHED
+                        await self.save_trade(trade)
+                        pnl_pct = self.calculate_pnl_pct(trade, current_price)
+                        logger.info(f"Monitor: TP1 reached for {trade.symbol} @ {current_price}")
+                        await notifier.notify_tp_reached(trade.symbol, 1, 0, None)
+                        await self.notify_risk_engine(
+                            symbol=trade.symbol, side=side_str, event="tp1_hit",
+                            price=current_price, pnl_pct=pnl_pct,
+                            signal_hash=trade.signal_hash or "", size_remaining=pos_size,
+                        )
+
+                # === Auto SL→BE: fast local protection (RE v0.17.0) ===
+                # When Dumalka is active, RE manages SL/TP but polls every
+                # 30s — too slow to protect profits at TP1. The bot polls
+                # every 3s, so it can move SL→BE much faster.
+                if self._dumalka_manages_position() and not tp1_be_done:
+                    be_trigger_hit = False
+                    if trade.auto_be_trigger and trade.auto_be_trigger > 0:
+                        be_trigger_hit = (
+                            (trade.side == TradeSide.LONG and current_price >= trade.auto_be_trigger) or
+                            (trade.side == TradeSide.SHORT and current_price <= trade.auto_be_trigger)
+                        )
+                    elif tp1_notified:
+                        be_trigger_hit = True
+
+                    if be_trigger_hit:
+                        atr_offset = 0.002
+                        if trade.auto_be_price and trade.auto_be_price > 0:
+                            be_price = trade.auto_be_price
+                        elif trade.side == TradeSide.LONG:
+                            be_price = trade.entry_price * (1 + atr_offset)
+                        else:
+                            be_price = trade.entry_price * (1 - atr_offset)
+
+                        be_price_str = self.format_precision(be_price, tick_size)
+                        try:
+                            success = await bybit_client.set_stop_loss(
+                                trade.symbol, be_price_str, api_key, api_secret, testnet
+                            )
+                            if success:
+                                trade.sl = float(be_price_str)
+                                tp1_be_done = True
+                                await self.save_trade(trade)
+                                trigger_src = "RE auto_be_trigger" if trade.auto_be_trigger else "TP1"
+                                price_src = "RE auto_be_price" if trade.auto_be_price else "entry+0.2%"
+                                logger.info(
+                                    f"Monitor: Auto SL→BE for {trade.symbol}: "
+                                    f"SL={be_price_str} (trigger={trigger_src}, price={price_src})"
+                                )
+                                await notifier.notify_tp_reached(trade.symbol, 1, 0, float(be_price_str))
+                        except Exception as e:
+                            logger.error(f"Monitor: Auto SL→BE error for {trade.symbol}: {e}")
+
+                elif not self._dumalka_manages_position() and trade.stage in (TradeStage.OPEN, TradeStage.TP1_REACHED):
+                    tp2_hit = (
+                        (trade.side == TradeSide.SHORT and current_price <= trade.tp2) or
+                        (trade.side == TradeSide.LONG and current_price >= trade.tp2)
+                    )
+                    if tp2_hit:
+                        sl_breakeven = self.format_precision(trade.entry_price, tick_size)
+                        try:
+                            await bybit_client.set_stop_loss(
+                                trade.symbol, sl_breakeven, api_key, api_secret, testnet
+                            )
+                            trade.sl = float(sl_breakeven)
+                            trade.stage = TradeStage.TP2_REACHED
+                            tp1_notified = True
+                            await self.save_trade(trade)
+                            pnl_pct = self.calculate_pnl_pct(trade, current_price)
+                            logger.info(
+                                f"Monitor: TP2 reached for {trade.symbol} @ {current_price}. "
+                                f"SL moved to breakeven={sl_breakeven}"
+                            )
+                            await notifier.notify_tp_reached(trade.symbol, 2, 0, float(sl_breakeven))
+                            await self.notify_risk_engine(
+                                symbol=trade.symbol, side=side_str, event="tp2_hit",
+                                price=current_price, pnl_pct=pnl_pct,
+                                signal_hash=trade.signal_hash or "", size_remaining=pos_size,
+                            )
+                        except Exception as e:
+                            logger.error(f"Monitor: Error moving SL to breakeven for {trade.symbol}: {e}")
+
+            except Exception as e:
+                logger.error(f"Monitor: Error for {trade_id}: {e}", exc_info=True)
+
+            await asyncio.sleep(3)
+
+    # ─── PnL calculation ──────────────────────────────────────────────
+
+    def calculate_pnl(self, trade: TradeState, exit_price: float) -> float:
+        coeff = 1 if trade.side == TradeSide.LONG else -1
+        return ((exit_price - trade.entry_price) / trade.entry_price) * trade.size * coeff
+
+    @staticmethod
+    def calculate_pnl_pct(trade: TradeState, price: float) -> float:
+        pct = ((price - trade.entry_price) / trade.entry_price) * 100
+        if trade.side == TradeSide.SHORT:
+            pct = -pct
+        return round(pct, 2)
+
+    # ─── DB save ──────────────────────────────────────────────────────
+
+    async def save_trade(self, trade: TradeState, status: str = "active", profit_loss: float = None):
+        async with async_session() as session:
+            result = await session.execute(select(TradeDB).where(TradeDB.id == trade.id))
+            db_trade = result.scalar_one_or_none()
+            if db_trade:
+                for key, value in trade.to_dict().items():
+                    setattr(db_trade, key, value)
+                db_trade.status = status
+                if profit_loss is not None:
+                    db_trade.profit_loss = profit_loss
+                if status == "closed":
+                    db_trade.closed_at = datetime.utcnow()
+                await session.commit()
+
+    # ─── Stats broadcast ──────────────────────────────────────────────
+
+    async def broadcast_user_stats(self, user_id: int):
+        from app.main import manager
+        api_key, api_secret, testnet = await self.get_user_credentials(user_id)
+        if not api_key:
+            return
+        balance = await bybit_client.get_wallet_balance(api_key, api_secret, testnet)
+        count = sum(1 for t in list(self.active_trades.values()) if t.user_id == user_id)
+        await manager.broadcast({
+            "type": "update_stats",
+            "active_trades_count": count,
+            "balance": balance,
+            "user_id": user_id,
+        })
+
+
+    # ─── Dumalka command execution ─────────────────────────────────────
+
+    async def execute_dumalka_command(self, trade_id: str, trade: TradeState, cmd) -> dict:
+        """Execute a position management command from Risk Engine Думалка."""
+        try:
+            api_key, api_secret, testnet = await self.get_user_credentials(trade.user_id)
+            if not api_key:
+                return {"ok": False, "error": "user credentials not found"}
+
+            symbol_info = await bybit_client.get_symbol_info(trade.symbol)
+            qty_step = float(symbol_info.get("lotSizeFilter", {}).get("qtyStep", "1")) if symbol_info else 1.0
+            tick_size = float(symbol_info.get("priceFilter", {}).get("tickSize", "0.01")) if symbol_info else 0.01
+
+            result = {"ok": True, "action": cmd.action, "symbol": trade.symbol}
+
+            if cmd.action == "move_sl":
+                if cmd.new_sl is None:
+                    return {"ok": False, "error": "new_sl required", "position_alive": True}
+
+                current_price = await bybit_client.get_current_price(trade.symbol)
+                if current_price:
+                    if trade.side == TradeSide.LONG and cmd.new_sl > current_price:
+                        logger.warning(
+                            f"Dumalka: move_sl {trade.symbol} rejected locally: "
+                            f"SL {cmd.new_sl:.6f} > current price {current_price:.6f} for LONG"
+                        )
+                        return {
+                            "ok": False,
+                            "error": "sl_price_invalid",
+                            "reason": f"SL {cmd.new_sl} above current price {current_price} for LONG",
+                            "position_alive": True,
+                        }
+                    elif trade.side == TradeSide.SHORT and cmd.new_sl < current_price:
+                        logger.warning(
+                            f"Dumalka: move_sl {trade.symbol} rejected locally: "
+                            f"SL {cmd.new_sl:.6f} < current price {current_price:.6f} for SHORT"
+                        )
+                        return {
+                            "ok": False,
+                            "error": "sl_price_invalid",
+                            "reason": f"SL {cmd.new_sl} below current price {current_price} for SHORT",
+                            "position_alive": True,
+                        }
+
+                sl_price = self.format_precision(cmd.new_sl, tick_size)
+                success = await bybit_client.set_stop_loss(
+                    trade.symbol, sl_price, api_key, api_secret, testnet
+                )
+                if success:
+                    trade.sl = float(sl_price)
+                    await self.save_trade(trade)
+                    logger.info(f"Dumalka [ACTIVE]: Move SL {trade.symbol} → {sl_price} (zone={cmd.zone}, reason={cmd.reason})")
+                    result["new_sl"] = float(sl_price)
+                else:
+                    return {"ok": False, "error": "move_sl failed", "position_alive": True}
+
+            elif cmd.action == "move_tp":
+                if cmd.new_tp is None:
+                    return {"ok": False, "error": "new_tp required", "position_alive": True}
+                tp_price = self.format_precision(cmd.new_tp, tick_size)
+                success = await bybit_client.set_take_profit(
+                    trade.symbol, tp_price, api_key, api_secret, testnet
+                )
+                if success:
+                    logger.info(f"Dumalka [ACTIVE]: Move TP {trade.symbol} → {tp_price} (zone={cmd.zone}, reason={cmd.reason})")
+                    result["new_tp"] = float(tp_price)
+                else:
+                    return {"ok": False, "error": "move_tp failed", "position_alive": True}
+
+            elif cmd.action == "full_close":
+                trade.dumalka_closing = True
+                order_id = await bybit_client.close_position_full(
+                    trade.symbol, trade.side.value, api_key, api_secret, testnet
+                )
+                if order_id:
+                    pnl, exit_price = await self._fetch_closed_pnl(
+                        trade.symbol, trade, api_key, api_secret, testnet
+                    )
+                    current_price = exit_price or await bybit_client.get_current_price(trade.symbol) or trade.entry_price
+                    if pnl is None:
+                        pnl = self.calculate_pnl(trade, current_price)
+                        logger.warning(f"Dumalka: Bybit closedPnl unavailable for {trade.symbol} after retries, using estimate")
+                    pnl_pct = (pnl / trade.size) * 100 if trade.size > 0 else self.calculate_pnl_pct(trade, current_price)
+                    side_str = "long" if trade.side == TradeSide.LONG else "short"
+                    trade.stage = TradeStage.CLOSED
+                    await self.save_trade(trade, status="closed", profit_loss=pnl)
+                    if trade_id in self.active_trades:
+                        del self.active_trades[trade_id]
+                    logger.info(f"Dumalka [ACTIVE]: Full close {trade.symbol} (pnl={pnl:.4f} USDT, zone={cmd.zone}, reason={cmd.reason})")
+                    await self.notify_risk_engine(
+                        symbol=trade.symbol, side=side_str, event="dumalka_close",
+                        price=current_price, pnl_pct=pnl_pct,
+                        signal_hash=trade.signal_hash or "", size_remaining=0.0,
+                        comment=f"Dumalka: {cmd.reason}" if cmd.reason else "Dumalka close",
+                    )
+                    await notifier.notify_trade_closed(
+                        trade.symbol, trade.side.value, pnl, f"Думалка: full close ({cmd.reason})",
+                        close_price=current_price, entry_price=trade.entry_price,
+                        order_id=trade.position_id, signal_hash=trade.signal_hash,
+                    )
+                    await self.broadcast_user_stats(trade.user_id)
+                    result["pnl"] = pnl
+                else:
+                    trade.dumalka_closing = False
+                    return {"ok": False, "error": "full_close failed", "position_alive": True}
+            else:
+                return {"ok": False, "error": f"unknown action: {cmd.action}"}
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Dumalka: Error executing {cmd.action} for {trade.symbol}: {e}")
+            return {"ok": False, "error": str(e)}
+
+
+trade_manager = TradeManager()
